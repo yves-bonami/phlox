@@ -193,3 +193,5 @@ mod tests {
         assert_eq!(state.nodes.len(), 1);
     }
 }
+
+pub mod registry;

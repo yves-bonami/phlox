@@ -60,3 +60,27 @@ cargo run -p phlox-plugin-host --example inspect -- examples/native-plugin/targe
 
 This demonstrates synchronous discovery. It is **not** yet runtime
 installation, manifest validation, directory watching, or node execution.
+
+## Local versioned installation (prototype)
+
+`PluginRegistry` installs a trusted local package containing `plugin.toml`
+and its named `.so`. It copies files to a staging directory and publishes
+`<plugin-root>/<id>/<version>/` with a rename; existing versions are never
+overwritten. `refresh()` loads new plugin IDs without restarting the host;
+already active plugin versions stay loaded until restart. `watch()` runs an
+optional blocking filesystem watcher and notifies the application when new
+IDs activate. The management API and the web interface are not yet wired up.
+
+Example on Linux:
+
+```sh
+cargo build --manifest-path examples/native-plugin/Cargo.toml
+mkdir -p /tmp/phlox-example-package
+cp examples/native-plugin/plugin.toml /tmp/phlox-example-package/
+cp examples/native-plugin/target/debug/libphlox_example_plugin.so /tmp/phlox-example-package/
+cargo run -p phlox-plugin-host --example install -- /tmp/phlox-plugins /tmp/phlox-example-package
+```
+
+Native code is **trusted** and executes in the host process. Secure
+signatures, cross-filesystem staging, installation concurrency controls,
+plugin source authentication, and runtime flow integration remain future work.

@@ -5,3 +5,5 @@
 !.env.example
 
 **/target/
+
+/examples/native-plugin/Cargo.lock

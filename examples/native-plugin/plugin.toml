@@ -1,0 +1,4 @@
+id = "phlox-example"
+version = "0.1.0"
+library = "libphlox_example_plugin.so"
+abi_version = 1
