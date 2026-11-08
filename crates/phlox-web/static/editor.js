@@ -11,6 +11,8 @@
   let dragging = null, wiring = null, selected = null, suppressClick = false;
   let sequence = 0;
   let selectedLink = null;
+  let selectedNode = null;
+  const deleteNodeButton = document.getElementById("delete-node");
   const preview = document.createElementNS("http://www.w3.org/2000/svg", "path");
   preview.setAttribute("class", "connection connection-preview");
   preview.style.pointerEvents = "none";
@@ -30,6 +32,27 @@
   function clearSelected() {
     if (selected) selected.classList.remove("selected");
     selected = null;
+  }
+  function selectNode(id) {
+    if (selectedNode) nodes.get(selectedNode)?.group.classList.remove("node-selected");
+    selectedNode = nodes.has(id) ? id : null;
+    if (selectedNode) nodes.get(selectedNode).group.classList.add("node-selected");
+    deleteNodeButton.disabled = !selectedNode;
+  }
+  function deleteSelectedNode() {
+    if (!selectedNode) return;
+    const id = selectedNode;
+    const node = nodes.get(id);
+    node.group.remove();
+    nodes.delete(id);
+    for (let i = links.length - 1; i >= 0; i--) {
+      if (links[i].from === id || links[i].to === id) links.splice(i, 1);
+    }
+    selectedLink = null;
+    clearSelected();
+    selectNode(null);
+    status.textContent = "Deleted " + node.type + " and its connections.";
+    updateNodes();
   }
   function addNode(type, x, y) {
     const id = "node-" + (++sequence);
@@ -60,6 +83,7 @@
     svg.append(group);
     nodes.set(id, { group, x, y, type: type.id, inputs, outputs });
     updateNodes();
+    selectNode(id);
     status.textContent = "Added " + type.id + ".";
   }
   function path(startX, startY, endX, endY) {
@@ -139,6 +163,8 @@
     if (event.target.closest(".port")) return;
     const group = event.target.closest(".node");
     if (!group) return;
+    selectNode(group.dataset.id);
+    selectedLink = null;
     const p = point(event), node = nodes.get(group.dataset.id);
     dragging = { node, pointerId: event.pointerId, dx: p.x - node.x, dy: p.y - node.y };
     group.classList.add("dragging");
@@ -196,6 +222,8 @@
     }
     const port = event.target.closest(".port");
     if (!port) {
+      const group = event.target.closest(".node");
+      selectNode(group?.dataset.id || null);
       if (selectedLink) {
         selectedLink = null;
         updateNodes();
@@ -218,13 +246,15 @@
   document.addEventListener("keydown", event => {
     if (event.target.closest("input, textarea, select, [contenteditable]")) return;
     if (event.key === "Escape") {
+      selectNode(null);
       clearSelected();
       selectedLink = null;
       updateNodes();
     }
-    if (selectedLink && (event.key === "Delete" || event.key === "Backspace")) {
-      event.preventDefault();
-      removeSelectedLink();
+    if (event.key === "Delete" || event.key === "Backspace") {
+      if (selectedLink || selectedNode) event.preventDefault();
+      if (selectedLink) removeSelectedLink();
+      else deleteSelectedNode();
     }
   });
   connections.addEventListener("keydown", event => {
@@ -233,9 +263,11 @@
       removeSelectedLink();
     }
   });
+  deleteNodeButton.addEventListener("click", deleteSelectedNode);
   document.getElementById("reset").addEventListener("click", () => {
     nodes.forEach(node => node.group.remove());
     nodes.clear();
+    selectNode(null);
     links.length = 0;
     selectedLink = null;
     clearSelected();
@@ -252,13 +284,20 @@
       const plugins = await response.json();
       if (!Array.isArray(plugins)) throw new Error("Unexpected response");
       palette.replaceChildren();
+      const knownTypes = new Map();
       for (const plugin of plugins) {
         if (!Array.isArray(plugin.nodes)) continue;
         for (const type of plugin.nodes) {
           if (typeof type.id !== "string") continue;
+          knownTypes.set(type.id, type);
           const button = document.createElement("button");
           button.type = "button";
+          button.draggable = true;
           button.className = "palette-node";
+          button.addEventListener("dragstart", event => {
+            event.dataTransfer.setData("application/x-phlox-node", type.id);
+            event.dataTransfer.effectAllowed = "copy";
+          });
           button.textContent = type.id;
           button.title = plugin.id + " v" + plugin.version;
           button.addEventListener("click", () => {
@@ -268,36 +307,27 @@
           palette.append(button);
         }
       }
+      palette._knownTypes = knownTypes;
       if (!palette.children.length) palette.textContent = "No plugin nodes found. Install a plugin and refresh.";
     } catch (error) {
       palette.textContent = "Could not load plugins: " + error.message;
     }
   }
-  document.getElementById("refresh-plugins").addEventListener("click", loadPalette);
-  document.getElementById("plugin-install-form").addEventListener("submit", async event => {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const button = form.querySelector("button");
-    button.disabled = true;
-    status.textContent = "Installing plugin…";
-    try {
-      const response = await fetch("/api/plugins/install", {
-        method: "POST",
-        body: new FormData(form)
-      });
-      if (!response.ok) throw new Error((await response.text()).slice(0, 300));
-      form.reset();
-      status.textContent = "Plugin installed. Refreshing palette…";
-      // The registry watcher activates new plugins asynchronously.
-      await new Promise(resolve => setTimeout(resolve, 350));
-      await loadPalette();
-      status.textContent = "Plugin installation completed.";
-    } catch (error) {
-      status.textContent = "Install failed: " + error.message;
-    } finally {
-      button.disabled = false;
+  svg.addEventListener("dragover", event => {
+    if (event.dataTransfer.types.includes("application/x-phlox-node")) {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "copy";
     }
   });
+  svg.addEventListener("drop", event => {
+    event.preventDefault();
+    const id = event.dataTransfer.getData("application/x-phlox-node");
+    const type = palette._knownTypes?.get(id);
+    if (!type) return;
+    const p = point(event);
+    addNode(type, Math.max(0, Math.min(730, p.x - 115)), Math.max(0, Math.min(420, p.y - 60)));
+  });
+  document.getElementById("refresh-plugins").addEventListener("click", loadPalette);
   const startButton = document.getElementById("start-flow");
   const stopButton = document.getElementById("stop-flow");
   const flowLogs = document.getElementById("flow-logs");

@@ -10,20 +10,13 @@
   <script defer src="/static/editor.js"></script>
 </head>
 <body>
-  <header><strong>PHLOX</strong><span>Flow editor · Prototype</span><span class="badge">Local / In-memory</span></header>
+  <header><strong>PHLOX</strong><nav><a href="/">Flow editor</a><a href="/plugins">Plugins</a></nav><span class="badge">Local / In-memory</span></header>
   <main>
     <aside>
       <h2>Flow</h2>
       <p>Move nodes by dragging. Drag from an output to an input to connect. Click a wire to remove it with × or Delete.</p>
-      <h2>Install plugin</h2>
-      <p>Upload a trusted Linux native plugin (.so) and its plugin.toml manifest.</p>
-      <form id="plugin-install-form">
-        <label>Manifest <input type="file" name="manifest" accept=".toml" required></label>
-        <label>Library <input type="file" name="library" accept=".so" required></label>
-        <button type="submit">Install plugin</button>
-      </form>
       <h2>Node types</h2>
-      <p>Plugin types discovered by Phlox. Click one to add a node.</p>
+      <p>Plugin types discovered by Phlox. Drag a node onto the canvas, or click to add.</p>
       <div id="node-palette" aria-live="polite">Loading plugins…</div>
       <button id="refresh-plugins" type="button">Refresh plugins</button>
       <label for="source-interval">Source interval (ms)</label>
@@ -31,12 +24,13 @@
       <button id="start-flow" type="button">Start flow</button>
       <button id="stop-flow" type="button" disabled>Stop flow</button>
       <pre id="flow-logs" aria-live="polite"></pre>
+      <button id="delete-node" type="button" disabled>Delete selected node</button>
       <button id="reset" type="button">Reset canvas</button>
       <p id="status" role="status" aria-live="polite">Ready</p>
     </aside>
     <section class="workspace" aria-label="Flow workspace">
       <div class="toolbar"><strong>Untitled flow</strong><span id="node-count">0 nodes · Drag to arrange</span></div>
-      <svg id="flow-canvas" role="img" aria-label="Interactive flow graph with two nodes" viewBox="0 0 960 540" preserveAspectRatio="xMidYMid meet">
+      <svg id="flow-canvas" role="img" aria-label="Interactive flow graph" viewBox="0 0 960 540" preserveAspectRatio="xMidYMid meet">
         <g id="connections"></g>
 
       </svg>

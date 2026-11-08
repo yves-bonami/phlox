@@ -17,6 +17,17 @@ async fn render_index() -> Result<Html<String>, StatusCode> {
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
+#[derive(Template)]
+#[template(path = "plugins.html")]
+struct PluginsTemplate;
+
+async fn render_plugins() -> Result<Html<String>, StatusCode> {
+    PluginsTemplate
+        .render()
+        .map(Html)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
 fn plugin_directory() -> std::path::PathBuf {
     if let Some(configured) = std::env::var_os("PHLOX_PLUGIN_DIR") {
         return configured.into();
@@ -38,6 +49,7 @@ fn app() -> Router {
             runner: phlox_runtime::RunState::default(),
         }))
         .route("/", get(render_index))
+        .route("/plugins", get(render_plugins))
         .route("/health", get(|| async { "ok" }))
         .nest_service(
             "/static",
@@ -61,6 +73,16 @@ mod tests {
     use super::*;
 
     #[test]
+    fn renders_plugin_management() {
+        let response = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(render_plugins())
+            .unwrap();
+        assert!(response.0.contains("plugin-install-form"));
+        assert!(response.0.contains("installed-plugins"));
+    }
+
+    #[test]
     fn renders_page() {
         let response = tokio::runtime::Runtime::new()
             .unwrap()
@@ -68,5 +90,6 @@ mod tests {
             .unwrap();
         assert!(response.0.contains("Phlox"));
         assert!(response.0.contains("flow-canvas"));
+        assert!(response.0.contains("delete-node"));
     }
 }

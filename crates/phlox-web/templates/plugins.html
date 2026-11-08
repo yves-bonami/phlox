@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phlox — Plugins</title><link rel="stylesheet" href="/static/app.css"><script defer src="/static/plugins.js"></script></head>
+<body><header><strong>PHLOX</strong><nav><a href="/">Flow editor</a><a href="/plugins">Plugins</a></nav><span class="badge">Local / In-memory</span></header>
+<main class="plugin-page"><section><h1>Plugin management</h1><p>Only install trusted native Linux plugins. They run inside the Phlox process.</p>
+<h2>Installed plugins</h2><div id="installed-plugins">Loading…</div><button id="refresh-plugins" type="button">Refresh</button></section>
+<section><h2>Install plugin</h2><form id="plugin-install-form">
+<label>Manifest <input type="file" name="manifest" accept=".toml" required></label>
+<label>Library <input type="file" name="library" accept=".so" required></label>
+<button type="submit">Install plugin</button></form><p id="status" role="status" aria-live="polite"></p></section></main></body></html>

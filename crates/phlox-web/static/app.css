@@ -53,3 +53,17 @@ button { padding: 10px 14px; border-radius: 8px; border: 1px solid #466b54; colo
 #flow-logs { font-size: 11px; max-height: 200px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 
 #source-interval { display: block; width: 100%; margin: 8px 0 12px; padding: 8px; background: #172534; color: white; border: 1px solid #466071; border-radius: 6px; }
+
+header nav { display: flex; gap: 18px; margin-left: 32px; }
+header nav a { color: #a5e4af; text-decoration: none; }
+header nav a:hover { text-decoration: underline; }
+.palette-node { cursor: grab; user-select: none; }
+.palette-node:active { cursor: grabbing; }
+.node-selected .node-body { stroke: #e1f7a7; stroke-width: 3; }
+#delete-node { margin: 10px 0; border-color: #a04c55; background: #3b222c; color: #ffb9bd; }
+button:disabled { opacity: .5; cursor: not-allowed; }
+.plugin-page { display: flex; align-items: start; gap: 40px; padding: 32px; }
+.plugin-page > section { max-width: 520px; flex: 1; }
+.installed-plugin { border: 1px solid #34485b; padding: 16px; border-radius: 10px; margin-bottom: 12px; }
+.installed-plugin p { color: #aab8c8; overflow-wrap: anywhere; }
+@media (max-width: 700px) { .plugin-page { flex-direction: column; } header nav { margin-left: 0; } }
