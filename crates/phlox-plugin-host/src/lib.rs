@@ -195,3 +195,101 @@ mod tests {
 }
 
 pub mod registry;
+
+/// Synchronous proof-of-concept execution support.
+/// A plugin lacking the optional execution symbol is discovery-only.
+impl LoadedPlugin {
+    pub fn poll(&self, node_type: &str) -> Result<Vec<(String, serde_json::Value)>, LoadError> {
+        struct Emitted {
+            values: Vec<(String, serde_json::Value)>,
+        }
+        unsafe extern "C" fn emit(
+            context: *mut c_void,
+            port: abi::ByteSpan,
+            json: abi::ByteSpan,
+        ) -> abi::Status {
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                if context.is_null() || port.data.is_null() || json.data.is_null() {
+                    return abi::Status::InvalidArgument;
+                }
+                let buffer = unsafe { &mut *(context as *mut Emitted) };
+                let port_bytes = unsafe { std::slice::from_raw_parts(port.data, port.len) };
+                let json_bytes = unsafe { std::slice::from_raw_parts(json.data, json.len) };
+                let Ok(port) = std::str::from_utf8(port_bytes) else {
+                    return abi::Status::InvalidArgument;
+                };
+                let Ok(value) = serde_json::from_slice(json_bytes) else {
+                    return abi::Status::InvalidArgument;
+                };
+                buffer.values.push((port.to_owned(), value));
+                abi::Status::Ok
+            }));
+            result.unwrap_or(abi::Status::InternalError)
+        }
+        let entry: Symbol<'_, abi::ExecutionEntry> =
+            unsafe { self._library.get(abi::EXECUTION_SYMBOL)? };
+        let table = unsafe { entry() };
+        if table.is_null() {
+            return Err(LoadError::InvalidPlugin("missing execution table"));
+        }
+        let table = unsafe { &*table };
+        if table.struct_size < std::mem::size_of::<abi::ExecutionApi>() {
+            return Err(LoadError::InvalidPlugin("invalid execution table size"));
+        }
+        let poll = table
+            .poll
+            .ok_or(LoadError::InvalidPlugin("missing source callback"))?;
+        let mut buffer = Emitted { values: Vec::new() };
+        let host = abi::OutputApi {
+            context: (&mut buffer as *mut Emitted).cast(),
+            emit: Some(emit),
+        };
+        let result = unsafe {
+            poll(
+                abi::ByteSpan {
+                    data: node_type.as_ptr(),
+                    len: node_type.len(),
+                },
+                &host,
+            )
+        };
+        if result != abi::Status::Ok {
+            return Err(LoadError::AbiStatus(result));
+        }
+        Ok(buffer.values)
+    }
+
+    pub fn consume(&self, node_type: &str, value: &serde_json::Value) -> Result<(), LoadError> {
+        let entry: Symbol<'_, abi::ExecutionEntry> =
+            unsafe { self._library.get(abi::EXECUTION_SYMBOL)? };
+        let table = unsafe { entry() };
+        if table.is_null() {
+            return Err(LoadError::InvalidPlugin("missing execution table"));
+        }
+        let table = unsafe { &*table };
+        if table.struct_size < std::mem::size_of::<abi::ExecutionApi>() {
+            return Err(LoadError::InvalidPlugin("invalid execution table size"));
+        }
+        let consume = table
+            .consume
+            .ok_or(LoadError::InvalidPlugin("missing sink callback"))?;
+        let json = serde_json::to_vec(value)
+            .map_err(|_| LoadError::InvalidPlugin("invalid message JSON"))?;
+        let result = unsafe {
+            consume(
+                abi::ByteSpan {
+                    data: node_type.as_ptr(),
+                    len: node_type.len(),
+                },
+                abi::ByteSpan {
+                    data: json.as_ptr(),
+                    len: json.len(),
+                },
+            )
+        };
+        if result != abi::Status::Ok {
+            return Err(LoadError::AbiStatus(result));
+        }
+        Ok(())
+    }
+}

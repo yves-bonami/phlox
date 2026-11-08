@@ -101,3 +101,29 @@ mod tests {
         assert!(!span.data.is_null());
     }
 }
+
+/// Optional execution extension, independent of the discovery ABI.
+/// All payloads are borrowed UTF-8 JSON byte spans for the duration of a call.
+pub const EXECUTION_SYMBOL: &[u8] = b"phlox_plugin_execution_v1\0";
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct ExecutionApi {
+    pub struct_size: usize,
+    /// Produce one message for a source node. Output is copied via host callback.
+    pub poll: Option<unsafe extern "C" fn(node_type: ByteSpan, host: *const OutputApi) -> Status>,
+    /// Consume one message for a sink node; the caller retains its bytes.
+    pub consume: Option<unsafe extern "C" fn(node_type: ByteSpan, json: ByteSpan) -> Status>,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct OutputApi {
+    pub context: *mut c_void,
+    pub emit: Option<
+        unsafe extern "C" fn(context: *mut c_void, port: ByteSpan, json: ByteSpan) -> Status,
+    >,
+}
+
+/// Optional static function table exported by native plugins.
+pub type ExecutionEntry = unsafe extern "C" fn() -> *const ExecutionApi;

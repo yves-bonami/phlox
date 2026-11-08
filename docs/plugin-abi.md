@@ -93,3 +93,24 @@ matching a core `ValueType` variant, e.g. `"String"`. An omitted array
 means no ports in that direction. The editor uses these definitions for
 port rendering and basic connection type checks. Native runtime execution
 and server-side flow validation remain separate work.
+
+## Optional execution proof (experimental)
+
+The discovery ABI remains v1. Plugins may additionally export
+`phlox_plugin_execution_v1`, returning a static `ExecutionApi` table.
+The host can call `poll` for one source emission and `consume` for a sink.
+Output is synchronously copied via `OutputApi.emit`; the payload is a JSON
+value. No Rust-owned memory crosses the ABI.
+
+To exercise example random Integer values through the host into the logging
+sink (without starting the UI):
+
+```sh
+cargo build --manifest-path examples/native-plugin/Cargo.toml
+cargo run -p phlox-plugin-host --example run -- examples/native-plugin/target/debug/libphlox_example_plugin.so
+```
+
+This is a deliberately synchronous proof, **not yet a deployed flow
+scheduler**. Dynamic flow graphs, per-node instances, Tokio queues, retries,
+backpressure, source timers, and UI start/stop controls remain future work.
+The example random generator is non-cryptographic and intended for testing.
