@@ -84,3 +84,41 @@ These decisions reflect the user's answers to questions 1–51 and supersede con
 ## Still to specify
 
 Exact FFI entrypoints, message memory ownership, install atomicity, graph-cycle safeguards, buffer semantics, schema dialect, API network defaults, storage schemas, and detailed test criteria.
+
+## Further accepted decisions (52–80)
+
+These decisions continue the same conversation. **MVP** means accepted direction for the initial implementation, not a promise that all capabilities ship in the first vertical slice.
+
+- **52 — Plugin developer interface:** Documented stable C ABI plus official ergonomic Rust SDK; other languages may implement ABI.
+- **53 — Message ownership:** Host-owned buffers with opaque handles, explicit lifetimes; internal reference counting allowed.
+- **54 — Threading:** Plugin-managed async runtime for MVP, shared by its node instances; host-managed execution API later.
+- **55 — Plugin-to-host events:** Thread-safe host callbacks; callbacks enqueue messages, not execute flow logic inline.
+- **56 — Callback backpressure:** Nonblocking status by default; optional async waiting for queue capacity, respecting edge policy.
+- **57 — Errors:** Structured error code, category, message and optional plugin-specific details.
+- **58 — Plugin initialization:** Lazy by default, configurable eager initialization; distinguish activation from initialization.
+- **59 — Metadata:** Static TOML manifest for discovery and ABI constraints, dynamic descriptions/schema from loaded plugin.
+- **60 — Node registration:** Immutable set of node types after registration; configured instances may derive output ports.
+- **61 — Instance lifetime:** Create on flow start, destroy on flow stop; shared connections can outlive individual flows.
+- **62 — Node startup:** Two-phase prepare/activate, with queues/resources ready before sources emit.
+- **63 — Shutdown:** Graceful drain by default with deadline, optional immediate shutdown.
+- **64 — Delivery semantics:** At-most-once within runtime for MVP; no automatic retries; delivery guarantees may expand later.
+- **65 — Processing failures:** Drop and report by default; optional error/dead-letter output without automatic retry.
+- **66 — Timestamps:** Optional source timestamp, always-populated received timestamp, UTC; additional timestamps in metadata.
+- **67 — Quality:** Optional Good/Uncertain/Bad with original protocol status retained in metadata; absent is unspecified.
+- **68 — Metadata:** Flexible typed key/value metadata, standardized common keys and namespaced protocol-specific keys.
+- **69 — Transformations:** Common built-in transformation nodes first; scriptable transformations via external plugin later.
+- **70 — Scripting:** Future language-agnostic WebAssembly engine for multiple compile-to-WASM languages; runtime choice deferred.
+- **71 — Variables:** In-memory flow-scoped typed variables for MVP; global variables later; node-local state separately.
+- **72 — Variable persistence:** In-memory only for MVP; reset on Phlox restart; persistence deferred.
+- **73 — Flow failures:** Isolate recoverable failures to affected flow; native crashes can still bring down process.
+- **74 — Inter-flow messages:** Dedicated internal input/output nodes, no network broker needed; subflows later.
+- **75 — Flow startup dependencies:** Independent startup for MVP; optional explicit dependency-aware startup later, reject dependency cycles.
+- **76 — Templates:** Parameterized reusable flow templates generate independent flow instances.
+- **77 — Template changes:** Do not alter existing instances automatically; track template version and opt-in validated updates.
+- **78 — Organization:** Hierarchical folders are organizational only, not execution/security boundaries.
+- **79 — Identity:** Stable UUIDs for flows and nodes; names and paths may change.
+- **80 — Import/export:** Allow import with unresolved dependencies but prevent deployment; interactive mapping later.
+
+## Precedence
+
+This register is the canonical record of accepted decisions (1–80). Architecture and MVP documents should follow it. Implementation-level details not explicitly decided remain open; don't interpret a proposed mechanism as an accepted requirement.
