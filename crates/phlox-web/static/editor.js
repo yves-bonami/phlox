@@ -13,6 +13,37 @@
   let selectedLink = null;
   let selectedNode = null;
   const deleteNodeButton = document.getElementById("delete-node");
+  const propertiesPanel = document.getElementById("node-properties");
+  const propertiesTitle = document.getElementById("node-properties-title");
+  const propertiesFields = document.getElementById("node-properties-fields");
+  function renderProperties() {
+    propertiesPanel.hidden = !selectedNode;
+    propertiesFields.replaceChildren();
+    if (!selectedNode) return;
+    const node = nodes.get(selectedNode);
+    propertiesTitle.textContent = node.type;
+    for (const [name, property] of Object.entries(node.schema?.properties || {})) {
+      if (property.type !== "integer") continue;
+      const label = document.createElement("label");
+      label.textContent = name.replaceAll("_", " ");
+      const input = document.createElement("input");
+      input.type = "number";
+      input.min = property.minimum ?? 1;
+      input.max = property.maximum ?? 60000;
+      input.value = node.configuration[name] ?? property.default ?? "";
+      input.addEventListener("change", () => {
+        const value = Number(input.value);
+        if (Number.isInteger(value) && value >= Number(input.min) && value <= Number(input.max)) {
+          node.configuration[name] = value;
+          status.textContent = node.type + ": " + name + " = " + value;
+        } else {
+          input.value = node.configuration[name] ?? property.default ?? "";
+        }
+      });
+      label.append(input);
+      propertiesFields.append(label);
+    }
+  }
   const preview = document.createElementNS("http://www.w3.org/2000/svg", "path");
   preview.setAttribute("class", "connection connection-preview");
   preview.style.pointerEvents = "none";
@@ -38,6 +69,7 @@
     selectedNode = nodes.has(id) ? id : null;
     if (selectedNode) nodes.get(selectedNode).group.classList.add("node-selected");
     deleteNodeButton.disabled = !selectedNode;
+    renderProperties();
   }
   function deleteSelectedNode() {
     if (!selectedNode) return;
@@ -81,7 +113,11 @@
     renderPorts(inputs, "input");
     renderPorts(outputs, "output");
     svg.append(group);
-    nodes.set(id, { group, x, y, type: type.id, inputs, outputs });
+        const configuration = {};
+    for (const [name, prop] of Object.entries(type.schema?.properties || {})) {
+      if (prop.default !== undefined) configuration[name] = prop.default;
+    }
+    nodes.set(id, { group, x, y, type: type.id, inputs, outputs, schema: type.schema, configuration });
     updateNodes();
     selectNode(id);
     status.textContent = "Added " + type.id + ".";
@@ -332,9 +368,8 @@
   const stopButton = document.getElementById("stop-flow");
   const flowLogs = document.getElementById("flow-logs");
   startButton.addEventListener("click", async () => {
-    const interval = Math.min(60000, Math.max(50, Number(document.getElementById("source-interval").value) || 500));
     const flow = {
-      nodes: Array.from(nodes, ([id, node]) => ({ id, type: node.type, interval_ms: interval })),
+      nodes: Array.from(nodes, ([id, node]) => ({ id, type: node.type, configuration: node.configuration })),
       edges: links.map(link => ({ from: link.from, fromPort: link.fromPort, to: link.to, toPort: link.toPort }))
     };
     try {

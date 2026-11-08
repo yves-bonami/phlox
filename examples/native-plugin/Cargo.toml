@@ -8,6 +8,5 @@ crate-type = ["cdylib"]
 
 [dependencies]
 phlox-plugin-sdk = { path = "../../crates/phlox-plugin-sdk" }
-serde_json = "1.0.154"
 
 [workspace]

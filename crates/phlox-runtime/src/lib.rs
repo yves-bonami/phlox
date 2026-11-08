@@ -22,12 +22,8 @@ pub struct FlowNode {
     pub id: String,
     #[serde(rename = "type")]
     pub node_type: String,
-    #[serde(default = "default_interval")]
-    pub interval_ms: u64,
-}
-
-fn default_interval() -> u64 {
-    500
+    #[serde(default)]
+    pub configuration: serde_json::Value,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -249,7 +245,12 @@ impl RunState {
                             let logs = logs.clone();
                             tokio::task::spawn_local(async move {
                                 let mut timer = tokio::time::interval(Duration::from_millis(
-                                    source.interval_ms.clamp(50, 60_000),
+                                    source
+                                        .configuration
+                                        .get("interval_ms")
+                                        .and_then(|v| v.as_u64())
+                                        .unwrap_or(500)
+                                        .clamp(50, 60_000),
                                 ));
                                 timer.set_missed_tick_behavior(
                                     tokio::time::MissedTickBehavior::Skip,
