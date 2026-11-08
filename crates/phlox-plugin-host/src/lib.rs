@@ -370,3 +370,88 @@ impl LoadedPlugin {
         Ok(output.0)
     }
 }
+
+/// Optional lifecycle table is accessed only while the loaded library is mapped.
+impl LoadedPlugin {
+    pub fn lifecycle(&self, action: LifecycleAction<'_>) -> Result<Option<u64>, LoadError> {
+        let Ok(entry) = (unsafe {
+            self._library
+                .get::<abi::LifecycleEntry>(abi::LIFECYCLE_SYMBOL)
+        }) else {
+            return Ok(None); // Legacy discovery/execution-only plugin.
+        };
+        let ptr = unsafe { entry() };
+        if ptr.is_null() {
+            return Err(LoadError::InvalidPlugin("null lifecycle table"));
+        }
+        let api = unsafe { &*ptr };
+        if api.struct_size < std::mem::size_of::<abi::LifecycleApi>() {
+            return Err(LoadError::InvalidPlugin("short lifecycle table"));
+        }
+        let status = match action {
+            LifecycleAction::Create {
+                node_type,
+                instance,
+                configuration,
+            } => {
+                let callback = api
+                    .create
+                    .ok_or(LoadError::InvalidPlugin("missing create callback"))?;
+                let json = serde_json::to_vec(configuration)
+                    .map_err(|_| LoadError::InvalidPlugin("invalid configuration"))?;
+                let span = |s: &str| abi::ByteSpan {
+                    data: s.as_ptr(),
+                    len: s.len(),
+                };
+                let mut handle = 0;
+                let status = unsafe {
+                    callback(
+                        span(node_type),
+                        span(instance),
+                        abi::ByteSpan {
+                            data: json.as_ptr(),
+                            len: json.len(),
+                        },
+                        &mut handle,
+                    )
+                };
+                if status != abi::Status::Ok {
+                    return Err(LoadError::AbiStatus(status));
+                }
+                return Ok(Some(handle));
+            }
+            LifecycleAction::Start(handle) => unsafe {
+                api.start
+                    .ok_or(LoadError::InvalidPlugin("missing start callback"))?(
+                    handle
+                )
+            },
+            LifecycleAction::Stop(handle) => unsafe {
+                api.stop
+                    .ok_or(LoadError::InvalidPlugin("missing stop callback"))?(
+                    handle
+                )
+            },
+            LifecycleAction::Destroy(handle) => unsafe {
+                api.destroy
+                    .ok_or(LoadError::InvalidPlugin("missing destroy callback"))?(
+                    handle
+                )
+            },
+        };
+        if status != abi::Status::Ok {
+            return Err(LoadError::AbiStatus(status));
+        }
+        Ok(Some(0))
+    }
+}
+pub enum LifecycleAction<'a> {
+    Create {
+        node_type: &'a str,
+        instance: &'a str,
+        configuration: &'a serde_json::Value,
+    },
+    Start(u64),
+    Stop(u64),
+    Destroy(u64),
+}

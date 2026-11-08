@@ -8,7 +8,7 @@ fn register(registrar: &mut Registrar<'_>) -> Result<()> {
 
 phlox_plugin_sdk::export_plugin!(
     id: "phlox-example",
-    version: "0.6.0",
+    version: "0.7.0",
     register: register,
 );
 
@@ -55,4 +55,52 @@ pub extern "C" fn phlox_plugin_execution_v1() -> *const abi::ExecutionApi {
         consume: Some(consume),
     });
     &API.0
+}
+
+use std::collections::HashMap;
+use std::sync::{LazyLock, Mutex};
+static INSTANCES: LazyLock<Mutex<HashMap<u64, bool>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+static NEXT_HANDLE: AtomicU64 = AtomicU64::new(1);
+
+unsafe extern "C" fn create_instance(node: abi::ByteSpan, instance: abi::ByteSpan, config: abi::ByteSpan, output: *mut u64) -> abi::Status {
+    if node.data.is_null() || instance.data.is_null() || config.data.is_null() || output.is_null() {
+        return abi::Status::InvalidArgument;
+    }
+    let kind = unsafe { std::slice::from_raw_parts(node.data, node.len) };
+    if kind != b"example/source" && kind != b"example/sink" { return abi::Status::InvalidArgument; }
+    let handle = NEXT_HANDLE.fetch_add(1, Ordering::Relaxed);
+    INSTANCES.lock().unwrap().insert(handle, false);
+    unsafe { *output = handle; }
+    println!("[example] create instance {handle}");
+    abi::Status::Ok
+}
+unsafe extern "C" fn start_instance(handle: u64) -> abi::Status {
+    let mut items = INSTANCES.lock().unwrap();
+    let Some(started) = items.get_mut(&handle) else { return abi::Status::InvalidArgument };
+    *started = true;
+    println!("[example] start instance {handle}");
+    abi::Status::Ok
+}
+unsafe extern "C" fn stop_instance(handle: u64) -> abi::Status {
+    let mut items = INSTANCES.lock().unwrap();
+    let Some(started) = items.get_mut(&handle) else { return abi::Status::InvalidArgument };
+    *started = false;
+    println!("[example] stop instance {handle}");
+    abi::Status::Ok
+}
+unsafe extern "C" fn destroy_instance(handle: u64) -> abi::Status {
+    if INSTANCES.lock().unwrap().remove(&handle).is_none() { return abi::Status::InvalidArgument; }
+    println!("[example] destroy instance {handle}");
+    abi::Status::Ok
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn phlox_plugin_lifecycle_v1() -> *const abi::LifecycleApi {
+    struct Table(abi::LifecycleApi);
+    unsafe impl Sync for Table {}
+    static TABLE: Table = Table(abi::LifecycleApi {
+        struct_size: std::mem::size_of::<abi::LifecycleApi>(),
+        create: Some(create_instance), start: Some(start_instance),
+        stop: Some(stop_instance), destroy: Some(destroy_instance),
+    });
+    &TABLE.0
 }

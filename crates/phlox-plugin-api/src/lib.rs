@@ -146,3 +146,24 @@ pub struct ProcessApi {
 }
 
 pub type ProcessEntry = unsafe extern "C" fn() -> *const ProcessApi;
+
+/// Optional per-instance lifecycle extension. Handles belong to their plugin
+/// and are valid between successful create and destroy calls.
+pub const LIFECYCLE_SYMBOL: &[u8] = b"phlox_plugin_lifecycle_v1\0";
+
+#[repr(C)]
+pub struct LifecycleApi {
+    pub struct_size: usize,
+    pub create: Option<
+        unsafe extern "C" fn(
+            node_type: ByteSpan,
+            instance: ByteSpan,
+            configuration: ByteSpan,
+            out_handle: *mut u64,
+        ) -> Status,
+    >,
+    pub start: Option<unsafe extern "C" fn(handle: u64) -> Status>,
+    pub stop: Option<unsafe extern "C" fn(handle: u64) -> Status>,
+    pub destroy: Option<unsafe extern "C" fn(handle: u64) -> Status>,
+}
+pub type LifecycleEntry = unsafe extern "C" fn() -> *const LifecycleApi;

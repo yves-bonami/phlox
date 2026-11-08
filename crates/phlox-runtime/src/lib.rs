@@ -1,6 +1,6 @@
 //! In-memory asynchronous flow runner with per-edge bounded queues.
 
-use phlox_plugin_host::registry::PluginRegistry;
+use phlox_plugin_host::{LifecycleAction, registry::PluginRegistry};
 use std::{
     path::PathBuf,
     sync::{
@@ -181,6 +181,41 @@ impl RunState {
                 let local = tokio::task::LocalSet::new();
                 local
                     .run_until(async move {
+                        // Initialize each node instance once before scheduling.
+                        // Lifecycle callbacks are optional for older plugins.
+                        let mut created = Vec::new();
+                        for node in &flow.nodes {
+                            let plugin = registry.plugin_for_type(&node.node_type).unwrap();
+                            match plugin.lifecycle(LifecycleAction::Create {
+                                node_type: &node.node_type,
+                                instance: &node.id,
+                                configuration: &node.configuration,
+                            }) {
+                                Ok(Some(handle)) => {
+                                    created.push((node.node_type.clone(), handle, false));
+                                    if let Err(error) =
+                                        plugin.lifecycle(LifecycleAction::Start(handle))
+                                    {
+                                        push_log(
+                                            &logs,
+                                            format!("Node {} failed to start: {error:?}", node.id),
+                                        );
+                                        running.store(false, Ordering::SeqCst);
+                                        break;
+                                    }
+                                    created.last_mut().unwrap().2 = true;
+                                }
+                                Ok(None) => (),
+                                Err(error) => {
+                                    push_log(
+                                        &logs,
+                                        format!("Node {} failed to create: {error:?}", node.id),
+                                    );
+                                    running.store(false, Ordering::SeqCst);
+                                    break;
+                                }
+                            }
+                        }
                         let registry = std::rc::Rc::new(registry);
                         let mut routes: std::collections::HashMap<
                             (String, String),
@@ -355,6 +390,25 @@ impl RunState {
                         while running.load(Ordering::SeqCst) {
                             tokio::time::sleep(Duration::from_millis(50)).await;
                         }
+                        // Stop then destroy in reverse creation order. This also
+                        // cleans up partially started flows.
+                        for (node_type, handle, started) in created.into_iter().rev() {
+                            if let Some(plugin) = registry.plugin_for_type(&node_type) {
+                                if started {
+                                    if let Err(error) =
+                                        plugin.lifecycle(LifecycleAction::Stop(handle))
+                                    {
+                                        push_log(&logs, format!("Node stop error: {error:?}"));
+                                    }
+                                }
+                                if let Err(error) =
+                                    plugin.lifecycle(LifecycleAction::Destroy(handle))
+                                {
+                                    push_log(&logs, format!("Node destroy error: {error:?}"));
+                                }
+                            }
+                        }
+                        running.store(false, Ordering::SeqCst);
                     })
                     .await;
             });

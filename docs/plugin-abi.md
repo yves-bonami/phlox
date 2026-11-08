@@ -126,3 +126,14 @@ The runtime rejects invalid role declarations and connections into sources or
 out of sinks. Only source nodes receive polling tasks; processors react to
 incoming messages and sinks consume them. These metadata roles are a first
 step toward explicit per-instance lifecycle methods.
+
+## Optional node-instance lifecycle
+
+Native plugins can export `phlox_plugin_lifecycle_v1` with `create`, `start`,
+`stop`, and `destroy` callbacks. The host passes a node type, unique instance
+ID, and configuration JSON to `create`, and stores the plugin-owned handle.
+The runtime starts instances before scheduling, then stops and destroys them
+in reverse order during shutdown, including cleanup after failed startup.
+Legacy plugins without this symbol continue to work. This is a transitional
+contract: polling, processing and sink callbacks still use type IDs instead
+of instance handles, so per-instance execution state is not yet available.
