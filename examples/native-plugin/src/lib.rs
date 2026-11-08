@@ -8,7 +8,7 @@ fn register(registrar: &mut Registrar<'_>) -> Result<()> {
 
 phlox_plugin_sdk::export_plugin!(
     id: "phlox-example",
-    version: "0.7.0",
+    version: "0.8.0",
     register: register,
 );
 
@@ -59,7 +59,7 @@ pub extern "C" fn phlox_plugin_execution_v1() -> *const abi::ExecutionApi {
 
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
-static INSTANCES: LazyLock<Mutex<HashMap<u64, bool>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+static INSTANCES: LazyLock<Mutex<HashMap<u64, (bool, u64)>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 static NEXT_HANDLE: AtomicU64 = AtomicU64::new(1);
 
 unsafe extern "C" fn create_instance(node: abi::ByteSpan, instance: abi::ByteSpan, config: abi::ByteSpan, output: *mut u64) -> abi::Status {
@@ -69,7 +69,7 @@ unsafe extern "C" fn create_instance(node: abi::ByteSpan, instance: abi::ByteSpa
     let kind = unsafe { std::slice::from_raw_parts(node.data, node.len) };
     if kind != b"example/source" && kind != b"example/sink" { return abi::Status::InvalidArgument; }
     let handle = NEXT_HANDLE.fetch_add(1, Ordering::Relaxed);
-    INSTANCES.lock().unwrap().insert(handle, false);
+    INSTANCES.lock().unwrap().insert(handle, (false, 0));
     unsafe { *output = handle; }
     println!("[example] create instance {handle}");
     abi::Status::Ok
@@ -77,14 +77,14 @@ unsafe extern "C" fn create_instance(node: abi::ByteSpan, instance: abi::ByteSpa
 unsafe extern "C" fn start_instance(handle: u64) -> abi::Status {
     let mut items = INSTANCES.lock().unwrap();
     let Some(started) = items.get_mut(&handle) else { return abi::Status::InvalidArgument };
-    *started = true;
+    started.0 = true;
     println!("[example] start instance {handle}");
     abi::Status::Ok
 }
 unsafe extern "C" fn stop_instance(handle: u64) -> abi::Status {
     let mut items = INSTANCES.lock().unwrap();
     let Some(started) = items.get_mut(&handle) else { return abi::Status::InvalidArgument };
-    *started = false;
+    started.0 = false;
     println!("[example] stop instance {handle}");
     abi::Status::Ok
 }
@@ -101,6 +101,41 @@ pub extern "C" fn phlox_plugin_lifecycle_v1() -> *const abi::LifecycleApi {
         struct_size: std::mem::size_of::<abi::LifecycleApi>(),
         create: Some(create_instance), start: Some(start_instance),
         stop: Some(stop_instance), destroy: Some(destroy_instance),
+    });
+    &TABLE.0
+}
+
+unsafe extern "C" fn poll_instance(handle: u64, output: *const abi::OutputApi) -> abi::Status {
+    if output.is_null() { return abi::Status::InvalidArgument; }
+    let value = {
+        let mut instances = INSTANCES.lock().unwrap();
+        let Some(entry) = instances.get_mut(&handle) else { return abi::Status::InvalidArgument };
+        if !entry.0 { return abi::Status::InvalidArgument; }
+        entry.1 = entry.1.wrapping_add(1);
+        // Separate reproducible test sequence for each node instance.
+        (entry.1.wrapping_mul(73).wrapping_add(handle.wrapping_mul(131))) % 1000
+    };
+    let json = value.to_string();
+    let output = unsafe { &*output };
+    let Some(emit) = output.emit else { return abi::Status::InvalidArgument };
+    unsafe { emit(output.context, abi::ByteSpan::from_static(b"out"), abi::ByteSpan { data: json.as_ptr(), len: json.len() }) }
+}
+unsafe extern "C" fn consume_instance(handle: u64, port: abi::ByteSpan, json: abi::ByteSpan) -> abi::Status {
+    if port.data.is_null() || json.data.is_null() { return abi::Status::InvalidArgument; }
+    let ready = INSTANCES.lock().unwrap().get(&handle).is_some_and(|v| v.0);
+    if !ready || unsafe { std::slice::from_raw_parts(port.data, port.len) } != b"in" { return abi::Status::InvalidArgument; }
+    let bytes = unsafe { std::slice::from_raw_parts(json.data, json.len) };
+    let Ok(value) = std::str::from_utf8(bytes) else { return abi::Status::InvalidArgument };
+    println!("[example/sink] instance {handle} received {value}");
+    abi::Status::Ok
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn phlox_plugin_instance_execution_v1() -> *const abi::InstanceExecutionApi {
+    struct Table(abi::InstanceExecutionApi);
+    unsafe impl Sync for Table {}
+    static TABLE: Table = Table(abi::InstanceExecutionApi {
+        struct_size: std::mem::size_of::<abi::InstanceExecutionApi>(),
+        poll: Some(poll_instance), consume: Some(consume_instance), process: None,
     });
     &TABLE.0
 }

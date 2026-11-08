@@ -167,3 +167,22 @@ pub struct LifecycleApi {
     pub destroy: Option<unsafe extern "C" fn(handle: u64) -> Status>,
 }
 pub type LifecycleEntry = unsafe extern "C" fn() -> *const LifecycleApi;
+
+/// Instance-aware callbacks. No changes to v1 lifecycle or execution tables.
+pub const INSTANCE_EXECUTION_SYMBOL: &[u8] = b"phlox_plugin_instance_execution_v1\0";
+#[repr(C)]
+pub struct InstanceExecutionApi {
+    pub struct_size: usize,
+    pub poll: Option<unsafe extern "C" fn(handle: u64, output: *const OutputApi) -> Status>,
+    pub consume:
+        Option<unsafe extern "C" fn(handle: u64, input_port: ByteSpan, json: ByteSpan) -> Status>,
+    pub process: Option<
+        unsafe extern "C" fn(
+            handle: u64,
+            input_port: ByteSpan,
+            json: ByteSpan,
+            output: *const OutputApi,
+        ) -> Status,
+    >,
+}
+pub type InstanceExecutionEntry = unsafe extern "C" fn() -> *const InstanceExecutionApi;

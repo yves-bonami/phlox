@@ -455,3 +455,143 @@ pub enum LifecycleAction<'a> {
     Stop(u64),
     Destroy(u64),
 }
+
+impl LoadedPlugin {
+    pub fn instance_poll(
+        &self,
+        handle: u64,
+    ) -> Result<Vec<(String, serde_json::Value)>, LoadError> {
+        let entry: Symbol<'_, abi::InstanceExecutionEntry> =
+            unsafe { self._library.get(abi::INSTANCE_EXECUTION_SYMBOL)? };
+        let table = unsafe { entry() };
+        if table.is_null() {
+            return Err(LoadError::InvalidPlugin("null instance execution table"));
+        }
+        let table = unsafe { &*table };
+        if table.struct_size < std::mem::size_of::<abi::InstanceExecutionApi>() {
+            return Err(LoadError::InvalidPlugin("short instance execution table"));
+        }
+        let callback = table
+            .poll
+            .ok_or(LoadError::InvalidPlugin("missing instance poll"))?;
+        let mut values = Vec::new();
+        let host = instance_output(&mut values);
+        let status = unsafe { callback(handle, &host) };
+        if status != abi::Status::Ok {
+            return Err(LoadError::AbiStatus(status));
+        }
+        Ok(values)
+    }
+    pub fn instance_consume(
+        &self,
+        handle: u64,
+        port: &str,
+        value: &serde_json::Value,
+    ) -> Result<(), LoadError> {
+        let entry: Symbol<'_, abi::InstanceExecutionEntry> =
+            unsafe { self._library.get(abi::INSTANCE_EXECUTION_SYMBOL)? };
+        let table = unsafe { entry() };
+        if table.is_null() {
+            return Err(LoadError::InvalidPlugin("null instance execution table"));
+        }
+        let table = unsafe { &*table };
+        if table.struct_size < std::mem::size_of::<abi::InstanceExecutionApi>() {
+            return Err(LoadError::InvalidPlugin("short instance execution table"));
+        }
+        let callback = table
+            .consume
+            .ok_or(LoadError::InvalidPlugin("missing instance consume"))?;
+        let json =
+            serde_json::to_vec(value).map_err(|_| LoadError::InvalidPlugin("invalid JSON"))?;
+        let status = unsafe {
+            callback(
+                handle,
+                span_for(port),
+                abi::ByteSpan {
+                    data: json.as_ptr(),
+                    len: json.len(),
+                },
+            )
+        };
+        if status != abi::Status::Ok {
+            return Err(LoadError::AbiStatus(status));
+        }
+        Ok(())
+    }
+    pub fn instance_process(
+        &self,
+        handle: u64,
+        port: &str,
+        value: &serde_json::Value,
+    ) -> Result<Vec<(String, serde_json::Value)>, LoadError> {
+        let entry: Symbol<'_, abi::InstanceExecutionEntry> =
+            unsafe { self._library.get(abi::INSTANCE_EXECUTION_SYMBOL)? };
+        let table = unsafe { entry() };
+        if table.is_null() {
+            return Err(LoadError::InvalidPlugin("null instance execution table"));
+        }
+        let table = unsafe { &*table };
+        if table.struct_size < std::mem::size_of::<abi::InstanceExecutionApi>() {
+            return Err(LoadError::InvalidPlugin("short instance execution table"));
+        }
+        let callback = table
+            .process
+            .ok_or(LoadError::InvalidPlugin("missing instance processor"))?;
+        let json =
+            serde_json::to_vec(value).map_err(|_| LoadError::InvalidPlugin("invalid JSON"))?;
+        let mut values = Vec::new();
+        let host = instance_output(&mut values);
+        let status = unsafe {
+            callback(
+                handle,
+                span_for(port),
+                abi::ByteSpan {
+                    data: json.as_ptr(),
+                    len: json.len(),
+                },
+                &host,
+            )
+        };
+        if status != abi::Status::Ok {
+            return Err(LoadError::AbiStatus(status));
+        }
+        Ok(values)
+    }
+}
+fn span_for(value: &str) -> abi::ByteSpan {
+    abi::ByteSpan {
+        data: value.as_ptr(),
+        len: value.len(),
+    }
+}
+fn instance_output(values: &mut Vec<(String, serde_json::Value)>) -> abi::OutputApi {
+    unsafe extern "C" fn emit(
+        ctx: *mut c_void,
+        port: abi::ByteSpan,
+        json: abi::ByteSpan,
+    ) -> abi::Status {
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            if ctx.is_null() || port.data.is_null() || json.data.is_null() {
+                return abi::Status::InvalidArgument;
+            }
+            let Ok(port) =
+                std::str::from_utf8(unsafe { std::slice::from_raw_parts(port.data, port.len) })
+            else {
+                return abi::Status::InvalidArgument;
+            };
+            let Ok(value) =
+                serde_json::from_slice(unsafe { std::slice::from_raw_parts(json.data, json.len) })
+            else {
+                return abi::Status::InvalidArgument;
+            };
+            unsafe { &mut *(ctx as *mut Vec<(String, serde_json::Value)>) }
+                .push((port.into(), value));
+            abi::Status::Ok
+        }));
+        result.unwrap_or(abi::Status::InternalError)
+    }
+    abi::OutputApi {
+        context: (values as *mut Vec<(String, serde_json::Value)>).cast(),
+        emit: Some(emit),
+    }
+}

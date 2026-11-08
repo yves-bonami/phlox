@@ -137,3 +137,13 @@ in reverse order during shutdown, including cleanup after failed startup.
 Legacy plugins without this symbol continue to work. This is a transitional
 contract: polling, processing and sink callbacks still use type IDs instead
 of instance handles, so per-instance execution state is not yet available.
+
+## Instance-aware execution
+
+The optional `phlox_plugin_instance_execution_v1` table provides handle-based
+`poll`, `consume`, and `process` functions. When a plugin provides a lifecycle
+handle, the runtime uses these instance-aware callbacks instead of type-based
+v1 callbacks. Plugins without lifecycle support continue using legacy calls.
+The example plugin v0.8.0 maintains a separate state sequence for each
+created source instance. The plugin is responsible for synchronizing access
+to its handles and cleaning state on `destroy`.

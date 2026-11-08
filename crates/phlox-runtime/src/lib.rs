@@ -184,6 +184,7 @@ impl RunState {
                         // Initialize each node instance once before scheduling.
                         // Lifecycle callbacks are optional for older plugins.
                         let mut created = Vec::new();
+                        let mut handles = std::collections::HashMap::new();
                         for node in &flow.nodes {
                             let plugin = registry.plugin_for_type(&node.node_type).unwrap();
                             match plugin.lifecycle(LifecycleAction::Create {
@@ -192,6 +193,7 @@ impl RunState {
                                 configuration: &node.configuration,
                             }) {
                                 Ok(Some(handle)) => {
+                                    handles.insert(node.id.clone(), handle);
                                     created.push((node.node_type.clone(), handle, false));
                                     if let Err(error) =
                                         plugin.lifecycle(LifecycleAction::Start(handle))
@@ -216,6 +218,7 @@ impl RunState {
                                 }
                             }
                         }
+                        let handles = std::rc::Rc::new(handles);
                         let registry = std::rc::Rc::new(registry);
                         let mut routes: std::collections::HashMap<
                             (String, String),
@@ -243,6 +246,7 @@ impl RunState {
                                 .map(|((_, port), senders)| (port.clone(), senders.clone()))
                                 .collect();
                             let registry = registry.clone();
+                            let handle = handles.get(&target.id).copied();
                             let logs = logs.clone();
                             let running = running.clone();
                             tokio::task::spawn_local(async move {
@@ -253,7 +257,12 @@ impl RunState {
                                     let plugin =
                                         registry.plugin_for_type(&target.node_type).unwrap();
                                     if forwards.is_empty() {
-                                        match plugin.consume(&target.node_type, &value) {
+                                        let result = if let Some(handle) = handle {
+                                            plugin.instance_consume(handle, &target_port, &value)
+                                        } else {
+                                            plugin.consume(&target.node_type, &value)
+                                        };
+                                        match result {
                                             Ok(()) => push_log(
                                                 &logs,
                                                 format!(
@@ -266,11 +275,12 @@ impl RunState {
                                             }
                                         }
                                     } else {
-                                        match plugin.process(
-                                            &target.node_type,
-                                            &target_port,
-                                            &value,
-                                        ) {
+                                        let result = if let Some(handle) = handle {
+                                            plugin.instance_process(handle, &target_port, &value)
+                                        } else {
+                                            plugin.process(&target.node_type, &target_port, &value)
+                                        };
+                                        match result {
                                             Ok(values) => {
                                                 for (port, transformed) in values {
                                                     for (_, senders) in
@@ -328,6 +338,7 @@ impl RunState {
                                 .map(|((_, port), senders)| (port.clone(), senders.clone()))
                                 .collect();
                             let registry = registry.clone();
+                            let handle = handles.get(&source.id).copied();
                             let running = running.clone();
                             let logs = logs.clone();
                             tokio::task::spawn_local(async move {
@@ -347,11 +358,14 @@ impl RunState {
                                     if !running.load(Ordering::SeqCst) {
                                         break;
                                     }
-                                    match registry
-                                        .plugin_for_type(&source.node_type)
-                                        .unwrap()
-                                        .poll(&source.node_type)
-                                    {
+                                    let plugin =
+                                        registry.plugin_for_type(&source.node_type).unwrap();
+                                    let result = if let Some(handle) = handle {
+                                        plugin.instance_poll(handle)
+                                    } else {
+                                        plugin.poll(&source.node_type)
+                                    };
+                                    match result {
                                         Ok(values) => {
                                             for (port, value) in values {
                                                 for (_, senders) in output_routes
