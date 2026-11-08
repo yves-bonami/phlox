@@ -17,12 +17,23 @@ async fn render_index() -> Result<Html<String>, StatusCode> {
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
+fn plugin_directory() -> std::path::PathBuf {
+    if let Some(configured) = std::env::var_os("PHLOX_PLUGIN_DIR") {
+        return configured.into();
+    }
+    if let Some(data) = std::env::var_os("XDG_DATA_HOME").filter(|s| !s.is_empty()) {
+        return std::path::PathBuf::from(data).join("phlox/plugins");
+    }
+    if let Some(home) = std::env::var_os("HOME") {
+        return std::path::PathBuf::from(home).join(".local/share/phlox/plugins");
+    }
+    std::path::PathBuf::from("/var/lib/phlox/plugins")
+}
+
 fn app() -> Router {
     Router::new()
         .merge(phlox_api::router(phlox_api::start_plugin_discovery(
-            std::env::var_os("PHLOX_PLUGIN_DIR")
-                .map(std::path::PathBuf::from)
-                .unwrap_or_else(|| std::path::PathBuf::from("/var/lib/phlox/plugins")),
+            plugin_directory(),
         )))
         .route("/", get(render_index))
         .route("/health", get(|| async { "ok" }))
