@@ -109,3 +109,10 @@ rejects unknown configuration keys, duplicate node instance IDs, and cyclic
 connections. This is intentionally a limited schema subset rather than full
 JSON Schema validation; more complete validation and node lifecycle semantics
 are future work.
+
+### Synchronous shutdown acknowledgement
+
+The `/api/flow/stop` endpoint now waits for the worker to finish and for native
+node `stop`/`destroy` callbacks to complete before responding with HTTP 204.
+Start/stop transitions are serialized to prevent a new run overlapping cleanup
+of an earlier run. The HTTP handler joins via Tokio's blocking pool.

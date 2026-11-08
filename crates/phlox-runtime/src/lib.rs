@@ -41,10 +41,15 @@ pub struct RunState {
     pub running: Arc<AtomicBool>,
     pub logs: Arc<Mutex<Vec<String>>>,
     worker: Arc<Mutex<Option<thread::JoinHandle<()>>>>,
+    lifecycle_lock: Arc<Mutex<()>>,
 }
 
 impl RunState {
     pub fn start(&self, root: PathBuf, flow: FlowSpec) -> Result<(), String> {
+        let _guard = self
+            .lifecycle_lock
+            .lock()
+            .map_err(|_| "Lifecycle lock poisoned")?;
         if self.running.swap(true, Ordering::SeqCst) {
             return Err("Flow already running".into());
         }
@@ -431,8 +436,24 @@ impl RunState {
         Ok(())
     }
 
-    pub fn stop(&self) {
+    /// Signal shutdown and block until node stop/destroy callbacks finish.
+    pub fn stop(&self) -> Result<(), String> {
+        let _guard = self
+            .lifecycle_lock
+            .lock()
+            .map_err(|_| "Lifecycle lock poisoned")?;
         self.running.store(false, Ordering::SeqCst);
+        if let Some(worker) = self
+            .worker
+            .lock()
+            .map_err(|_| "Worker lock poisoned")?
+            .take()
+        {
+            worker
+                .join()
+                .map_err(|_| "Flow worker panicked".to_string())?;
+        }
+        Ok(())
     }
 }
 

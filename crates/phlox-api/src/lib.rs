@@ -102,9 +102,13 @@ async fn start_flow(
     Ok(StatusCode::ACCEPTED)
 }
 
-async fn stop_flow(State(state): State<PluginState>) -> StatusCode {
-    state.runner.stop();
-    StatusCode::NO_CONTENT
+async fn stop_flow(State(state): State<PluginState>) -> Result<StatusCode, (StatusCode, String)> {
+    let runner = state.runner.clone();
+    tokio::task::spawn_blocking(move || runner.stop())
+        .await
+        .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()))?
+        .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error))?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn flow_status(State(state): State<PluginState>) -> Json<serde_json::Value> {
