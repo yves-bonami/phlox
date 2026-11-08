@@ -48,3 +48,15 @@ conventions must be tested across separately compiled host and plugin.
 No guarantees yet for multi-threaded callback use, plugin update/unload,
 message ownership, instance lifetimes, or runtime execution. Those require
 a separate contract and implementation tests before adding functions.
+
+## Prototype verification
+
+Build the example plugin separately:
+
+```sh
+cargo build --manifest-path examples/native-plugin/Cargo.toml
+cargo run -p phlox-plugin-host --example inspect -- examples/native-plugin/target/debug/libphlox_example_plugin.so
+```
+
+This demonstrates synchronous discovery. It is **not** yet runtime
+installation, manifest validation, directory watching, or node execution.
