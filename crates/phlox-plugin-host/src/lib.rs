@@ -293,3 +293,80 @@ impl LoadedPlugin {
         Ok(())
     }
 }
+
+impl LoadedPlugin {
+    /// Transform a received JSON value into zero or more port-tagged outputs.
+    pub fn process(
+        &self,
+        node_type: &str,
+        input_port: &str,
+        value: &serde_json::Value,
+    ) -> Result<Vec<(String, serde_json::Value)>, LoadError> {
+        struct Output(Vec<(String, serde_json::Value)>);
+        unsafe extern "C" fn emit(
+            ctx: *mut c_void,
+            port: abi::ByteSpan,
+            data: abi::ByteSpan,
+        ) -> abi::Status {
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                if ctx.is_null() || port.data.is_null() || data.data.is_null() {
+                    return abi::Status::InvalidArgument;
+                }
+                let Ok(name) =
+                    std::str::from_utf8(unsafe { std::slice::from_raw_parts(port.data, port.len) })
+                else {
+                    return abi::Status::InvalidArgument;
+                };
+                let Ok(value) = serde_json::from_slice(unsafe {
+                    std::slice::from_raw_parts(data.data, data.len)
+                }) else {
+                    return abi::Status::InvalidArgument;
+                };
+                unsafe { &mut *(ctx as *mut Output) }
+                    .0
+                    .push((name.to_owned(), value));
+                abi::Status::Ok
+            }));
+            result.unwrap_or(abi::Status::InternalError)
+        }
+        let entry: Symbol<'_, abi::ProcessEntry> =
+            unsafe { self._library.get(abi::PROCESS_SYMBOL)? };
+        let ptr = unsafe { entry() };
+        if ptr.is_null() {
+            return Err(LoadError::InvalidPlugin("null process table"));
+        }
+        let api = unsafe { &*ptr };
+        if api.struct_size < std::mem::size_of::<abi::ProcessApi>() {
+            return Err(LoadError::InvalidPlugin("short process table"));
+        }
+        let callback = api
+            .process
+            .ok_or(LoadError::InvalidPlugin("no processor callback"))?;
+        let json =
+            serde_json::to_vec(value).map_err(|_| LoadError::InvalidPlugin("invalid JSON"))?;
+        let mut output = Output(Vec::new());
+        let host = abi::OutputApi {
+            context: (&mut output as *mut Output).cast(),
+            emit: Some(emit),
+        };
+        let span = |v: &str| abi::ByteSpan {
+            data: v.as_ptr(),
+            len: v.len(),
+        };
+        let status = unsafe {
+            callback(
+                span(node_type),
+                span(input_port),
+                abi::ByteSpan {
+                    data: json.as_ptr(),
+                    len: json.len(),
+                },
+                &host,
+            )
+        };
+        if status != abi::Status::Ok {
+            return Err(LoadError::AbiStatus(status));
+        }
+        Ok(output.0)
+    }
+}

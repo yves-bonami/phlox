@@ -9,7 +9,7 @@ docker compose up --build -d
 Open http://127.0.0.1:3000. The server binds to all interfaces inside the
 container, but Compose exposes the port only on localhost.
 
-The image includes `phlox-example` v0.3.0, which is copied into the
+The image includes `phlox-example` v0.4.0, which is copied into the
 persistent `plugin-data` volume at startup if that version is absent.
 Existing installed packages are not overwritten.
 

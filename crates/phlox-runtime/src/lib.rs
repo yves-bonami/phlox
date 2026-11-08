@@ -145,16 +145,27 @@ impl RunState {
                             (String, String),
                             Vec<tokio::sync::mpsc::Sender<serde_json::Value>>,
                         > = std::collections::HashMap::new();
+                        let mut consumers = Vec::new();
                         for edge in &flow.edges {
-                            let (sender, mut receiver) =
+                            let (sender, receiver) =
                                 tokio::sync::mpsc::channel::<serde_json::Value>(64);
                             routes
                                 .entry((edge.from.clone(), edge.from_port.clone()))
                                 .or_default()
                                 .push(sender);
+                            consumers.push((edge.clone(), receiver));
+                        }
+                        // Wire all sender routes before starting consumers: processors
+                        // must see their downstream queues, independent of edge ordering.
+                        for (edge, mut receiver) in consumers {
                             let target =
                                 flow.nodes.iter().find(|n| n.id == edge.to).unwrap().clone();
                             let target_port = edge.to_port.clone();
+                            let forwards: Vec<_> = routes
+                                .iter()
+                                .filter(|((id, _), _)| id == &target.id)
+                                .map(|((_, port), senders)| (port.clone(), senders.clone()))
+                                .collect();
                             let registry = registry.clone();
                             let logs = logs.clone();
                             let running = running.clone();
@@ -163,25 +174,70 @@ impl RunState {
                                     let Some(value) = receiver.recv().await else {
                                         break;
                                     };
-                                    let result = registry
-                                        .plugin_for_type(&target.node_type)
-                                        .unwrap()
-                                        .consume(&target.node_type, &value);
-                                    let message = match result {
-                                        Ok(()) => {
-                                            format!("{}.{target_port}: {value}", target.node_type)
+                                    let plugin =
+                                        registry.plugin_for_type(&target.node_type).unwrap();
+                                    if forwards.is_empty() {
+                                        match plugin.consume(&target.node_type, &value) {
+                                            Ok(()) => push_log(
+                                                &logs,
+                                                format!(
+                                                    "{}.{target_port}: {value}",
+                                                    target.node_type
+                                                ),
+                                            ),
+                                            Err(error) => {
+                                                push_log(&logs, format!("Sink error: {error:?}"))
+                                            }
                                         }
-                                        Err(error) => format!("Sink error: {error:?}"),
-                                    };
-                                    push_log(&logs, message);
+                                    } else {
+                                        match plugin.process(
+                                            &target.node_type,
+                                            &target_port,
+                                            &value,
+                                        ) {
+                                            Ok(values) => {
+                                                for (port, transformed) in values {
+                                                    for (_, senders) in
+                                                        forwards.iter().filter(|(p, _)| *p == port)
+                                                    {
+                                                        for sender in senders {
+                                                            if sender
+                                                                .try_send(transformed.clone())
+                                                                .is_err()
+                                                            {
+                                                                push_log(
+                                                                    &logs,
+                                                                    format!(
+                                                                        "Queue full: {}.{port}",
+                                                                        target.node_type
+                                                                    ),
+                                                                );
+                                                            } else {
+                                                                push_log(
+                                                                    &logs,
+                                                                    format!(
+                                                                        "{}.{port}: {transformed}",
+                                                                        target.node_type
+                                                                    ),
+                                                                );
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            Err(error) => push_log(
+                                                &logs,
+                                                format!("Processor error: {error:?}"),
+                                            ),
+                                        }
+                                    }
                                 }
                             });
                         }
-                        for source in flow
-                            .nodes
-                            .iter()
-                            .filter(|node| routes.keys().any(|(id, _)| id == &node.id))
-                        {
+                        for source in flow.nodes.iter().filter(|node| {
+                            routes.keys().any(|(id, _)| id == &node.id)
+                                && !flow.edges.iter().any(|edge| edge.to == node.id)
+                        }) {
                             let source = source.clone();
                             let output_routes: Vec<_> = routes
                                 .iter()

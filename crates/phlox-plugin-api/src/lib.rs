@@ -127,3 +127,22 @@ pub struct OutputApi {
 
 /// Optional static function table exported by native plugins.
 pub type ExecutionEntry = unsafe extern "C" fn() -> *const ExecutionApi;
+
+/// Optional processor extension. Separate from discovery and execution v1,
+/// so existing plugin tables retain their original layout.
+pub const PROCESS_SYMBOL: &[u8] = b"phlox_plugin_process_v1\0";
+
+#[repr(C)]
+pub struct ProcessApi {
+    pub struct_size: usize,
+    pub process: Option<
+        unsafe extern "C" fn(
+            node_type: ByteSpan,
+            input_port: ByteSpan,
+            input_json: ByteSpan,
+            output: *const OutputApi,
+        ) -> Status,
+    >,
+}
+
+pub type ProcessEntry = unsafe extern "C" fn() -> *const ProcessApi;

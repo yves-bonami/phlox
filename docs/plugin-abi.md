@@ -114,3 +114,7 @@ This is a deliberately synchronous proof, **not yet a deployed flow
 scheduler**. Dynamic flow graphs, per-node instances, Tokio queues, retries,
 backpressure, source timers, and UI start/stop controls remain future work.
 The example random generator is non-cryptographic and intended for testing.
+
+## Processor proof (experimental)
+
+Plugins can optionally export `phlox_plugin_process_v1`, with a static table accepting input port and JSON value and synchronously emitting zero or more output-port values via the host callback. The discovery and existing execution ABI tables remain unchanged. Example plugin 0.4.0 includes `example/double` (Integer in -> Integer out). The Tokio runner forwards processor emissions to downstream per-edge bounded queues; unconnected outputs are ignored. This is still an experimental, in-process implementation without per-instance state or robust cycle handling.

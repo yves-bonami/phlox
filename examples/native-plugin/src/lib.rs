@@ -3,12 +3,13 @@ use phlox_plugin_sdk::{Registrar, Result};
 fn register(registrar: &mut Registrar<'_>) -> Result<()> {
     registrar.node_type("example/source", r#"{"type":"object","properties":{},"x-phlox-ports":{"outputs":[{"name":"out","value_type":"Integer"}]}}"#)?;
     registrar.node_type("example/sink", r#"{"type":"object","properties":{},"x-phlox-ports":{"inputs":[{"name":"in","value_type":"Integer"}]}}"#)?;
+    registrar.node_type("example/double", r#"{"type":"object","properties":{},"x-phlox-ports":{"inputs":[{"name":"in","value_type":"Integer"}],"outputs":[{"name":"out","value_type":"Integer"}]}}"#)?;
     Ok(())
 }
 
 phlox_plugin_sdk::export_plugin!(
     id: "phlox-example",
-    version: "0.3.0",
+    version: "0.4.0",
     register: register,
 );
 
@@ -55,4 +56,30 @@ pub extern "C" fn phlox_plugin_execution_v1() -> *const abi::ExecutionApi {
         consume: Some(consume),
     });
     &API.0
+}
+
+unsafe extern "C" fn process(node: abi::ByteSpan, input: abi::ByteSpan, json: abi::ByteSpan, output: *const abi::OutputApi) -> abi::Status {
+    if node.data.is_null() || input.data.is_null() || json.data.is_null() || output.is_null() { return abi::Status::InvalidArgument; }
+    if unsafe { std::slice::from_raw_parts(node.data, node.len) } != b"example/double"
+        || unsafe { std::slice::from_raw_parts(input.data, input.len) } != b"in" {
+        return abi::Status::InvalidArgument;
+    }
+    let bytes = unsafe { std::slice::from_raw_parts(json.data, json.len) };
+    let Ok(number) = serde_json::from_slice::<i64>(bytes) else { return abi::Status::InvalidArgument };
+    let Some(doubled) = number.checked_mul(2) else { return abi::Status::InvalidArgument };
+    let result = doubled.to_string();
+    let host = unsafe { &*output };
+    let Some(emit) = host.emit else { return abi::Status::InvalidArgument };
+    unsafe { emit(host.context, abi::ByteSpan::from_static(b"out"), abi::ByteSpan { data: result.as_ptr(), len: result.len() }) }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn phlox_plugin_process_v1() -> *const abi::ProcessApi {
+    struct Table(abi::ProcessApi);
+    unsafe impl Sync for Table {}
+    static TABLE: Table = Table(abi::ProcessApi {
+        struct_size: std::mem::size_of::<abi::ProcessApi>(),
+        process: Some(process),
+    });
+    &TABLE.0
 }
