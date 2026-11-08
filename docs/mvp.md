@@ -96,3 +96,7 @@ Separately compiled phlox-example.so
 ```
 
 A successful run should report plugin version, loaded ABI version, flow and node UUIDs, message value, and clean shutdown, with CI covering invalid plugin versions and callback misuse where feasible.
+
+## Async execution prototype
+
+The editor now starts an in-memory Tokio local-task runner. Each source polls once per configurable interval (50–60000 ms), and each connection uses a bounded 64-message channel with drop-and-log behavior on overflow. Stop terminates the run, and the next Start joins the previous worker. This is a single-threaded proof; arbitrary processor nodes, production lifecycle handling, and delivery guarantees remain future milestones.

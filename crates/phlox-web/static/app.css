@@ -51,3 +51,5 @@ button { padding: 10px 14px; border-radius: 8px; border: 1px solid #466b54; colo
 .connection-remove:focus circle { stroke: white; stroke-width: 3; }
 
 #flow-logs { font-size: 11px; max-height: 200px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+#source-interval { display: block; width: 100%; margin: 8px 0 12px; padding: 8px; background: #172534; color: white; border: 1px solid #466071; border-radius: 6px; }

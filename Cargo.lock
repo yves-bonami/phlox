@@ -722,6 +722,8 @@ dependencies = [
  "phlox-core",
  "phlox-plugin-host",
  "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

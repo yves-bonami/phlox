@@ -1,5 +1,4 @@
-//! Minimal executable, in-memory flow runner. A first synchronous runtime
-//! slice; scheduling and backpressure will replace this loop later.
+//! In-memory asynchronous flow runner with per-edge bounded queues.
 
 use phlox_plugin_host::registry::PluginRegistry;
 use std::{
@@ -23,6 +22,12 @@ pub struct FlowNode {
     pub id: String,
     #[serde(rename = "type")]
     pub node_type: String,
+    #[serde(default = "default_interval")]
+    pub interval_ms: u64,
+}
+
+fn default_interval() -> u64 {
+    500
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -126,54 +131,124 @@ impl RunState {
         logs.lock().unwrap().clear();
         let running = self.running.clone();
         let worker = thread::spawn(move || {
-            while running.load(Ordering::SeqCst) {
-                for edge in &flow.edges {
-                    if !running.load(Ordering::SeqCst) {
-                        break;
-                    }
-                    let source = flow.nodes.iter().find(|n| n.id == edge.from);
-                    let target = flow.nodes.iter().find(|n| n.id == edge.to);
-                    let (Some(source), Some(target)) = (source, target) else {
-                        continue;
-                    };
-                    let Some(source_plugin) = registry.plugin_for_type(&source.node_type) else {
-                        continue;
-                    };
-                    let Some(target_plugin) = registry.plugin_for_type(&target.node_type) else {
-                        continue;
-                    };
-                    match source_plugin.poll(&source.node_type) {
-                        Ok(values) => {
-                            for (port, value) in values {
-                                if port != edge.from_port {
-                                    continue;
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_time()
+                .build()
+                .expect("Tokio runtime");
+            runtime.block_on(async move {
+                // Local tasks avoid requiring native libraries to be Send/Sync.
+                let local = tokio::task::LocalSet::new();
+                local
+                    .run_until(async move {
+                        let registry = std::rc::Rc::new(registry);
+                        let mut routes: std::collections::HashMap<
+                            (String, String),
+                            Vec<tokio::sync::mpsc::Sender<serde_json::Value>>,
+                        > = std::collections::HashMap::new();
+                        for edge in &flow.edges {
+                            let (sender, mut receiver) =
+                                tokio::sync::mpsc::channel::<serde_json::Value>(64);
+                            routes
+                                .entry((edge.from.clone(), edge.from_port.clone()))
+                                .or_default()
+                                .push(sender);
+                            let target =
+                                flow.nodes.iter().find(|n| n.id == edge.to).unwrap().clone();
+                            let target_port = edge.to_port.clone();
+                            let registry = registry.clone();
+                            let logs = logs.clone();
+                            let running = running.clone();
+                            tokio::task::spawn_local(async move {
+                                while running.load(Ordering::SeqCst) {
+                                    let Some(value) = receiver.recv().await else {
+                                        break;
+                                    };
+                                    let result = registry
+                                        .plugin_for_type(&target.node_type)
+                                        .unwrap()
+                                        .consume(&target.node_type, &value);
+                                    let message = match result {
+                                        Ok(()) => {
+                                            format!("{}.{target_port}: {value}", target.node_type)
+                                        }
+                                        Err(error) => format!("Sink error: {error:?}"),
+                                    };
+                                    push_log(&logs, message);
                                 }
-                                let result = target_plugin.consume(&target.node_type, &value);
-                                let message = match result {
-                                    Ok(()) => format!(
-                                        "{}.{port} → {}.{}: {value}",
-                                        source.node_type, target.node_type, edge.to_port
-                                    ),
-                                    Err(error) => format!("Sink error: {error:?}"),
-                                };
-                                let mut lines = logs.lock().unwrap();
-                                lines.push(message);
-                                if lines.len() > 100 {
-                                    lines.remove(0);
+                            });
+                        }
+                        for source in flow
+                            .nodes
+                            .iter()
+                            .filter(|node| routes.keys().any(|(id, _)| id == &node.id))
+                        {
+                            let source = source.clone();
+                            let output_routes: Vec<_> = routes
+                                .iter()
+                                .filter(|((id, _), _)| id == &source.id)
+                                .map(|((_, port), senders)| (port.clone(), senders.clone()))
+                                .collect();
+                            let registry = registry.clone();
+                            let running = running.clone();
+                            let logs = logs.clone();
+                            tokio::task::spawn_local(async move {
+                                let mut timer = tokio::time::interval(Duration::from_millis(
+                                    source.interval_ms.clamp(50, 60_000),
+                                ));
+                                timer.set_missed_tick_behavior(
+                                    tokio::time::MissedTickBehavior::Skip,
+                                );
+                                while running.load(Ordering::SeqCst) {
+                                    timer.tick().await;
+                                    if !running.load(Ordering::SeqCst) {
+                                        break;
+                                    }
+                                    match registry
+                                        .plugin_for_type(&source.node_type)
+                                        .unwrap()
+                                        .poll(&source.node_type)
+                                    {
+                                        Ok(values) => {
+                                            for (port, value) in values {
+                                                for (_, senders) in output_routes
+                                                    .iter()
+                                                    .filter(|(name, _)| *name == port)
+                                                {
+                                                    for sender in senders {
+                                                        if sender.try_send(value.clone()).is_err() {
+                                                            push_log(
+                                                                &logs,
+                                                                format!(
+                                                                    "Queue full: {}.{port}",
+                                                                    source.node_type
+                                                                ),
+                                                            );
+                                                        } else {
+                                                            push_log(
+                                                                &logs,
+                                                                format!(
+                                                                    "{}.{port}: {value}",
+                                                                    source.node_type
+                                                                ),
+                                                            );
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        Err(error) => {
+                                            push_log(&logs, format!("Source error: {error:?}"))
+                                        }
+                                    }
                                 }
-                            }
+                            });
                         }
-                        Err(error) => {
-                            let mut lines = logs.lock().unwrap();
-                            lines.push(format!("Source error: {error:?}"));
-                            if lines.len() > 100 {
-                                lines.remove(0);
-                            }
+                        while running.load(Ordering::SeqCst) {
+                            tokio::time::sleep(Duration::from_millis(50)).await;
                         }
-                    }
-                }
-                thread::sleep(Duration::from_millis(500));
-            }
+                    })
+                    .await;
+            });
         });
         *self.worker.lock().unwrap() = Some(worker);
         Ok(())
@@ -181,5 +256,13 @@ impl RunState {
 
     pub fn stop(&self) {
         self.running.store(false, Ordering::SeqCst);
+    }
+}
+
+fn push_log(logs: &Arc<Mutex<Vec<String>>>, message: String) {
+    let mut lines = logs.lock().unwrap();
+    lines.push(message);
+    if lines.len() > 100 {
+        lines.remove(0);
     }
 }

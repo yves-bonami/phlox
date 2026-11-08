@@ -302,8 +302,9 @@
   const stopButton = document.getElementById("stop-flow");
   const flowLogs = document.getElementById("flow-logs");
   startButton.addEventListener("click", async () => {
+    const interval = Math.min(60000, Math.max(50, Number(document.getElementById("source-interval").value) || 500));
     const flow = {
-      nodes: Array.from(nodes, ([id, node]) => ({ id, type: node.type })),
+      nodes: Array.from(nodes, ([id, node]) => ({ id, type: node.type, interval_ms: interval })),
       edges: links.map(link => ({ from: link.from, fromPort: link.fromPort, to: link.to, toPort: link.toPort }))
     };
     try {
