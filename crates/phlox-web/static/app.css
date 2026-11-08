@@ -1,0 +1,33 @@
+:root { font-family: system-ui, sans-serif; color: #e9edf2; background: #0c121b; }
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; }
+header { display: flex; gap: 28px; align-items: center; height: 64px; padding: 0 24px; border-bottom: 1px solid #263445; }
+header strong { color: #95e09d; letter-spacing: .18em; }
+header span { color: #9eaaba; }
+.badge { margin-left: auto; border: 1px solid #365343; padding: 6px 12px; border-radius: 20px; font-size: 12px; }
+main { display: flex; min-height: calc(100vh - 64px); }
+aside { width: 260px; padding: 25px 22px; background: #111c29; border-right: 1px solid #263445; }
+aside h2 { margin: 0 0 18px; font-size: 18px; }
+aside p { font-size: 14px; line-height: 1.6; color: #aab8c8; }
+button { padding: 10px 14px; border-radius: 8px; border: 1px solid #466b54; color: #a5e4af; background: #203329; cursor: pointer; }
+.workspace { min-width: 0; flex: 1; display: flex; flex-direction: column; }
+.toolbar, .footer { padding: 15px 24px; display: flex; justify-content: space-between; font-size: 13px; color: #9eacba; }
+.toolbar { border-bottom: 1px solid #263445; }
+.toolbar strong { color: #e8edf4; }
+.footer { border-top: 1px solid #263445; }
+#flow-canvas { flex: 1; width: 100%; min-height: 440px; background-color: #101925; background-image: radial-gradient(#314050 1px, transparent 1px); background-size: 22px 22px; touch-action: none; }
+.node { cursor: grab; }
+.node.dragging { cursor: grabbing; }
+.node-body { fill: #1a2a39; stroke: #506377; stroke-width: 2; }
+.node-header { fill: #2b4152; }
+.node-title { fill: white; font-size: 16px; font-weight: 650; pointer-events: none; }
+.node-subtitle { fill: #a5b5c5; font-size: 13px; pointer-events: none; }
+.port { cursor: crosshair; stroke: #182533; stroke-width: 3; }
+.port-output { fill: #97e4a2; }
+.port-input { fill: #8abafe; }
+.port.selected { stroke: #fff; stroke-width: 4; }
+.port-label { font-size: 12px; fill: #bbcad8; pointer-events: none; }
+.connection { fill: none; stroke: #88d9a2; stroke-width: 3; }
+@media (max-width: 700px) { main { flex-direction: column; } aside { width: 100%; padding: 14px; } #flow-canvas { min-height: 400px; } }
+
+.connection-preview { stroke: #bcecc4; stroke-dasharray: 8 6; opacity: .85; }
