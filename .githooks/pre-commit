@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+
+cd "$(git rev-parse --show-toplevel)"
+
+echo "Running cargo check --workspace..."
+cargo check --workspace
+
+echo "Running cargo fmt --all -- --check..."
+cargo fmt --all -- --check
