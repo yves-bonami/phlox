@@ -7,3 +7,5 @@
 **/target/
 
 /examples/native-plugin/Cargo.lock
+
+/.dev/

@@ -1,0 +1,11 @@
+FROM rust:1.99-bookworm
+ARG LOCAL_UID=1000
+ARG LOCAL_GID=1000
+RUN groupadd --gid "${LOCAL_GID}" phlox \
+    && useradd --uid "${LOCAL_UID}" --gid "${LOCAL_GID}" --create-home phlox \
+    && mkdir -p /workspace/target /var/lib/phlox/plugins /home/phlox/.cargo/registry /home/phlox/.cargo/git \
+    && chown -R phlox:phlox /workspace /var/lib/phlox /home/phlox
+ENV CARGO_HOME=/home/phlox/.cargo
+WORKDIR /workspace
+USER phlox
+CMD ["cargo", "run", "-p", "phlox-web"]

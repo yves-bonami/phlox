@@ -1,0 +1,26 @@
+services:
+  phlox:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dev
+      args:
+        LOCAL_UID: ${LOCAL_UID:-1000}
+        LOCAL_GID: ${LOCAL_GID:-1000}
+    working_dir: /workspace
+    command: cargo run -p phlox-web
+    environment:
+      PHLOX_WEB_ADDR: 0.0.0.0:3000
+      PHLOX_PLUGIN_DIR: /var/lib/phlox/plugins
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - .:/workspace
+      - cargo-registry:/home/phlox/.cargo/registry
+      - cargo-git:/home/phlox/.cargo/git
+      - cargo-target:/workspace/target
+      - ./.dev/plugins:/var/lib/phlox/plugins
+
+volumes:
+  cargo-registry:
+  cargo-git:
+  cargo-target:
