@@ -84,3 +84,12 @@ cargo run -p phlox-plugin-host --example install -- /tmp/phlox-plugins /tmp/phlo
 Native code is **trusted** and executes in the host process. Secure
 signatures, cross-filesystem staging, installation concurrency controls,
 plugin source authentication, and runtime flow integration remain future work.
+
+## Port declarations (prototype)
+
+Node descriptor JSON Schemas may include `x-phlox-ports` with `inputs` and
+`outputs` arrays. Each entry carries a `name` and an optional `value_type`
+matching a core `ValueType` variant, e.g. `"String"`. An omitted array
+means no ports in that direction. The editor uses these definitions for
+port rendering and basic connection type checks. Native runtime execution
+and server-side flow validation remain separate work.

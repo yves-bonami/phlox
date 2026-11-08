@@ -40,18 +40,27 @@
       element("text", { class: "node-title", x: 18, y: 26 }, type.id.split("/").pop().slice(0, 22)),
       element("text", { class: "node-subtitle", x: 18, y: 79 }, type.id.slice(0, 30))
     );
-    // The current discovery ABI provides type IDs and schemas, not port descriptors.
-    // These temporary in/out ports are for canvas interaction only.
-    for (const [kind, px, labelX, anchor] of [["input", 0, 20, "start"], ["output", 230, 210, "end"]]) {
-      group.append(
-        element("circle", { class: "port port-" + kind, "data-node": id, "data-port": kind === "input" ? "in" : "out", cx: px, cy: 91, r: 9 }),
-        element("text", { class: "port-label", x: labelX, y: 95, "text-anchor": anchor }, kind === "input" ? "in" : "out")
-      );
-    }
+    const ports = type.schema?.["x-phlox-ports"] || {};
+    const inputs = Array.isArray(ports.inputs) ? ports.inputs : [];
+    const outputs = Array.isArray(ports.outputs) ? ports.outputs : [];
+    const renderPorts = (items, kind) => {
+      items.forEach((port, index) => {
+        if (typeof port.name !== "string") return;
+        const py = 91 + index * 24;
+        const px = kind === "input" ? 0 : 230;
+        group.append(
+          element("circle", { class: "port port-" + kind, "data-node": id, "data-port": port.name, cx: px, cy: py, r: 9 }),
+          element("text", { class: "port-label", x: kind === "input" ? 20 : 210, y: py + 4,
+            "text-anchor": kind === "input" ? "start" : "end" }, port.name)
+        );
+      });
+    };
+    renderPorts(inputs, "input");
+    renderPorts(outputs, "output");
     svg.append(group);
-    nodes.set(id, { group, x, y, type: type.id });
+    nodes.set(id, { group, x, y, type: type.id, inputs, outputs });
     updateNodes();
-    status.textContent = "Added " + type.id + " (ports are placeholders).";
+    status.textContent = "Added " + type.id + ".";
   }
   function path(startX, startY, endX, endY) {
     const curve = Math.max(65, Math.abs(endX - startX) * 0.5);
@@ -63,8 +72,8 @@
     for (const link of links) {
       const from = nodes.get(link.from), to = nodes.get(link.to);
       if (!from || !to) continue;
-      const x1 = from.x + 230, y1 = from.y + 91;
-      const x2 = to.x, y2 = to.y + 91;
+      const x1 = from.x + 230, y1 = from.y + 91 + from.outputs.findIndex(p => p.name === link.fromPort) * 24;
+      const x2 = to.x, y2 = to.y + 91 + to.inputs.findIndex(p => p.name === link.toPort) * 24;
       const d = path(x1, y1, x2, y2);
       const wire = element("g", { class: "wire" + (selectedLink === link ? " wire-selected" : "") });
       wire.append(
@@ -88,7 +97,8 @@
   function drawPreview(at) {
     const source = nodes.get(wiring.from);
     if (!source) return;
-    preview.setAttribute("d", path(source.x + 230, source.y + 91, at.x, at.y));
+    const portIndex = source.outputs.findIndex(p => p.name === wiring.fromPort);
+    preview.setAttribute("d", path(source.x + 230, source.y + 91 + portIndex * 24, at.x, at.y));
     connections.append(preview);
   }
   function removeSelectedLink() {
@@ -99,13 +109,17 @@
     status.textContent = "Connection removed.";
     updateNodes();
   }
-  function connect(from, to) {
-    if (from === to || links.some(l => l.from === from && l.to === to)) {
+  function connect(from, fromPort, to, toPort) {
+    const sourceType = nodes.get(from)?.outputs.find(p => p.name === fromPort)?.value_type;
+    const targetType = nodes.get(to)?.inputs.find(p => p.name === toPort)?.value_type;
+    if (!nodes.has(from) || !nodes.has(to) || from === to ||
+        (sourceType && targetType && sourceType !== targetType) ||
+        links.some(l => l.from === from && l.fromPort === fromPort && l.to === to && l.toPort === toPort)) {
       status.textContent = "Connection already exists or is invalid.";
       return;
     }
     selectedLink = null;
-    links.push({ from, to });
+    links.push({ from, fromPort, to, toPort });
     status.textContent = "Connected " + from + " → " + to;
     updateNodes();
   }
@@ -118,7 +132,7 @@
     const output = event.target.closest(".port-output");
     if (output) {
       event.preventDefault();
-      wiring = { from: output.dataset.node, pointerId: event.pointerId, start: point(event), moved: false };
+      wiring = { from: output.dataset.node, fromPort: output.dataset.port, pointerId: event.pointerId, start: point(event), moved: false };
       svg.setPointerCapture(event.pointerId);
       return;
     }
@@ -155,7 +169,7 @@
         suppressClick = true;
         setTimeout(() => { suppressClick = false; }, 0);
         if (target) {
-          connect(wiring.from, target.dataset.node);
+          connect(wiring.from, wiring.fromPort, target.dataset.node, target.dataset.port);
           clearSelected();
         } else if (!cancelled) status.textContent = "Release over an input port to connect.";
       }
@@ -197,7 +211,7 @@
       selected.classList.add("selected");
       status.textContent = "Select an input port or drag between ports.";
     } else if (selected) {
-      connect(selected.dataset.node, port.dataset.node);
+      connect(selected.dataset.node, selected.dataset.port, port.dataset.node, port.dataset.port);
       clearSelected();
     }
   });
