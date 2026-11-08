@@ -69,6 +69,10 @@ impl RunState {
                 .iter()
                 .find(|n| n.id == node.node_type)
                 .unwrap();
+            if let Err(error) = validate_role(&descriptor.schema) {
+                self.running.store(false, Ordering::SeqCst);
+                return Err(format!("{}: {error}", node.id));
+            }
             if let Err(error) = validate_configuration(&descriptor.schema, &node.configuration) {
                 self.running.store(false, Ordering::SeqCst);
                 return Err(format!("{}: {error}", node.id));
@@ -130,6 +134,27 @@ impl RunState {
                     .find(|port| {
                         port.get("name").and_then(|v| v.as_str()) == Some(edge.to_port.as_str())
                     })?;
+                let source_role = registry
+                    .plugin_for_type(&source.node_type)?
+                    .info
+                    .nodes
+                    .iter()
+                    .find(|n| n.id == source.node_type)?
+                    .schema
+                    .get("x-phlox-role")?
+                    .as_str()?;
+                let target_role = registry
+                    .plugin_for_type(&target.node_type)?
+                    .info
+                    .nodes
+                    .iter()
+                    .find(|n| n.id == target.node_type)?
+                    .schema
+                    .get("x-phlox-role")?
+                    .as_str()?;
+                if source_role == "sink" || target_role == "source" {
+                    return Some(false);
+                }
                 let output_type = output.get("value_type").and_then(|v| v.as_str());
                 let input_type = input.get("value_type").and_then(|v| v.as_str());
                 Some(output_type.is_none() || input_type.is_none() || output_type == input_type)
@@ -252,7 +277,14 @@ impl RunState {
                         }
                         for source in flow.nodes.iter().filter(|node| {
                             routes.keys().any(|(id, _)| id == &node.id)
-                                && !flow.edges.iter().any(|edge| edge.to == node.id)
+                                && registry
+                                    .plugin_for_type(&node.node_type)
+                                    .and_then(|plugin| {
+                                        plugin.info.nodes.iter().find(|n| n.id == node.node_type)
+                                    })
+                                    .and_then(|desc| desc.schema.get("x-phlox-role"))
+                                    .and_then(|role| role.as_str())
+                                    == Some("source")
                         }) {
                             let source = source.clone();
                             let output_routes: Vec<_> = routes
@@ -456,5 +488,12 @@ mod validation_tests {
             to_port: "in".into(),
         });
         assert!(has_cycle(&flow));
+    }
+}
+
+fn validate_role(schema: &serde_json::Value) -> Result<(), String> {
+    match schema.get("x-phlox-role").and_then(|role| role.as_str()) {
+        Some("source" | "processor" | "sink") => Ok(()),
+        _ => Err("Node type must declare x-phlox-role (source, processor, or sink)".into()),
     }
 }

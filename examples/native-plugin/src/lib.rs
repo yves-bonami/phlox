@@ -1,14 +1,14 @@
 use phlox_plugin_sdk::{Registrar, Result};
 
 fn register(registrar: &mut Registrar<'_>) -> Result<()> {
-    registrar.node_type("example/source", r#"{"type":"object","properties":{"interval_ms":{"type":"integer","minimum":50,"maximum":60000,"default":500}},"x-phlox-ports":{"outputs":[{"name":"out","value_type":"Integer"}]}}"#)?;
-    registrar.node_type("example/sink", r#"{"type":"object","properties":{},"x-phlox-ports":{"inputs":[{"name":"in","value_type":"Integer"}]}}"#)?;
+    registrar.node_type("example/source", r#"{"type":"object","properties":{"interval_ms":{"type":"integer","minimum":50,"maximum":60000,"default":500}},"x-phlox-role":"source","x-phlox-ports":{"outputs":[{"name":"out","value_type":"Integer"}]}}"#)?;
+    registrar.node_type("example/sink", r#"{"type":"object","properties":{},"x-phlox-role":"sink","x-phlox-ports":{"inputs":[{"name":"in","value_type":"Integer"}]}}"#)?;
     Ok(())
 }
 
 phlox_plugin_sdk::export_plugin!(
     id: "phlox-example",
-    version: "0.5.0",
+    version: "0.6.0",
     register: register,
 );
 
