@@ -59,14 +59,34 @@ impl RunState {
             return Err(format!("Plugin errors: {failures:?}"));
         }
         for node in &flow.nodes {
-            if registry.plugin_for_type(&node.node_type).is_none() {
+            let Some(plugin) = registry.plugin_for_type(&node.node_type) else {
                 self.running.store(false, Ordering::SeqCst);
                 return Err(format!("Unknown node type: {}", node.node_type));
+            };
+            let descriptor = plugin
+                .info
+                .nodes
+                .iter()
+                .find(|n| n.id == node.node_type)
+                .unwrap();
+            if let Err(error) = validate_configuration(&descriptor.schema, &node.configuration) {
+                self.running.store(false, Ordering::SeqCst);
+                return Err(format!("{}: {error}", node.id));
             }
         }
         if flow.nodes.is_empty() || flow.edges.is_empty() {
             self.running.store(false, Ordering::SeqCst);
             return Err("Flow must contain nodes and connections".into());
+        }
+        // Reject duplicate instance IDs and cycles before creating queues.
+        let mut ids = std::collections::HashSet::new();
+        if flow.nodes.iter().any(|node| !ids.insert(&node.id)) {
+            self.running.store(false, Ordering::SeqCst);
+            return Err("Duplicate node instance ID".into());
+        }
+        if has_cycle(&flow) {
+            self.running.store(false, Ordering::SeqCst);
+            return Err("Flow contains a cycle".into());
         }
         for edge in &flow.edges {
             let source = flow
@@ -321,5 +341,120 @@ fn push_log(logs: &Arc<Mutex<Vec<String>>>, message: String) {
     lines.push(message);
     if lines.len() > 100 {
         lines.remove(0);
+    }
+}
+
+fn validate_configuration(
+    schema: &serde_json::Value,
+    configuration: &serde_json::Value,
+) -> Result<(), String> {
+    if configuration.is_null() {
+        return Ok(());
+    }
+    let object = configuration
+        .as_object()
+        .ok_or("Configuration must be an object")?;
+    let properties = schema.get("properties").and_then(|value| value.as_object());
+    for (key, value) in object {
+        let prop = properties
+            .and_then(|props| props.get(key))
+            .ok_or_else(|| format!("Unknown configuration field: {key}"))?;
+        match prop.get("type").and_then(|v| v.as_str()) {
+            Some("integer") => {
+                let n = value
+                    .as_i64()
+                    .ok_or_else(|| format!("{key} must be an integer"))?;
+                if let Some(min) = prop.get("minimum").and_then(|v| v.as_i64()) {
+                    if n < min {
+                        return Err(format!("{key} must be >= {min}"));
+                    }
+                }
+                if let Some(max) = prop.get("maximum").and_then(|v| v.as_i64()) {
+                    if n > max {
+                        return Err(format!("{key} must be <= {max}"));
+                    }
+                }
+            }
+            Some("string") if !value.is_string() => return Err(format!("{key} must be a string")),
+            Some("boolean") if !value.is_boolean() => {
+                return Err(format!("{key} must be a boolean"));
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+fn has_cycle(flow: &FlowSpec) -> bool {
+    let mut graph: std::collections::HashMap<&str, Vec<&str>> = std::collections::HashMap::new();
+    for edge in &flow.edges {
+        graph.entry(&edge.from).or_default().push(&edge.to);
+    }
+    fn visit<'a>(
+        id: &'a str,
+        graph: &std::collections::HashMap<&'a str, Vec<&'a str>>,
+        marks: &mut std::collections::HashMap<&'a str, u8>,
+    ) -> bool {
+        match marks.get(id) {
+            Some(1) => return true,
+            Some(2) => return false,
+            _ => {}
+        }
+        marks.insert(id, 1);
+        if graph
+            .get(id)
+            .is_some_and(|next| next.iter().any(|n| visit(n, graph, marks)))
+        {
+            return true;
+        }
+        marks.insert(id, 2);
+        false
+    }
+    let mut marks = std::collections::HashMap::new();
+    flow.nodes
+        .iter()
+        .any(|node| visit(&node.id, &graph, &mut marks))
+}
+
+#[cfg(test)]
+mod validation_tests {
+    use super::*;
+    #[test]
+    fn validates_node_settings() {
+        let schema = serde_json::json!({"properties": {"interval_ms": {"type":"integer","minimum":50,"maximum":60000}}});
+        assert!(validate_configuration(&schema, &serde_json::json!({"interval_ms":150})).is_ok());
+        assert!(validate_configuration(&schema, &serde_json::json!({"interval_ms":10})).is_err());
+        assert!(
+            validate_configuration(&schema, &serde_json::json!({"interval_ms":"fast"})).is_err()
+        );
+        assert!(validate_configuration(&schema, &serde_json::json!({"unknown":1})).is_err());
+    }
+    #[test]
+    fn rejects_cycles() {
+        let nodes = ["a", "b"]
+            .iter()
+            .map(|id| FlowNode {
+                id: (*id).into(),
+                node_type: "example/source".into(),
+                configuration: serde_json::Value::Null,
+            })
+            .collect();
+        let mut flow = FlowSpec {
+            nodes,
+            edges: vec![FlowEdge {
+                from: "a".into(),
+                from_port: "out".into(),
+                to: "b".into(),
+                to_port: "in".into(),
+            }],
+        };
+        assert!(!has_cycle(&flow));
+        flow.edges.push(FlowEdge {
+            from: "b".into(),
+            from_port: "out".into(),
+            to: "a".into(),
+            to_port: "in".into(),
+        });
+        assert!(has_cycle(&flow));
     }
 }

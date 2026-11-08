@@ -100,3 +100,12 @@ A successful run should report plugin version, loaded ABI version, flow and node
 ## Async execution prototype
 
 The editor now starts an in-memory Tokio local-task runner. Each source polls once per configurable interval (50–60000 ms), and each connection uses a bounded 64-message channel with drop-and-log behavior on overflow. Stop terminates the run, and the next Start joins the previous worker. This is a single-threaded proof; arbitrary processor nodes, production lifecycle handling, and delivery guarantees remain future milestones.
+
+### Runtime validation
+
+Before execution, the server checks configured node properties against the
+supported plugin schema property types (integer bounds, strings, booleans),
+rejects unknown configuration keys, duplicate node instance IDs, and cyclic
+connections. This is intentionally a limited schema subset rather than full
+JSON Schema validation; more complete validation and node lifecycle semantics
+are future work.
