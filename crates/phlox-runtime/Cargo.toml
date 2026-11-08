@@ -7,3 +7,4 @@ license.workspace = true
 [dependencies]
 phlox-core = { workspace = true }
 phlox-plugin-host = { workspace = true }
+serde = { version = "1.0.229", features = ["derive"] }

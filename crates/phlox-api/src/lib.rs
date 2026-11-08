@@ -7,7 +7,9 @@ use axum::{
     routing::{get, post},
 };
 use phlox_plugin_host::{PluginInfo, registry::PluginRegistry};
+use phlox_runtime::{FlowSpec, RunState};
 use serde::Serialize;
+use std::sync::atomic::Ordering;
 use std::{
     path::PathBuf,
     sync::{Arc, RwLock},
@@ -49,6 +51,7 @@ pub type PluginSnapshot = Arc<RwLock<Vec<PluginDescriptor>>>;
 pub struct PluginState {
     pub snapshot: PluginSnapshot,
     pub root: PathBuf,
+    pub runner: RunState,
 }
 
 /// Start the local registry watcher and return a snapshot shared with HTTP.
@@ -71,6 +74,9 @@ pub fn router(state: PluginState) -> Router {
     Router::new()
         .route("/api/plugins", get(list_plugins))
         .route("/api/plugins/install", post(install_plugin))
+        .route("/api/flow/start", post(start_flow))
+        .route("/api/flow/stop", post(stop_flow))
+        .route("/api/flow/status", get(flow_status))
         .layer(DefaultBodyLimit::max(32 * 1024 * 1024))
         .with_state(state)
 }
@@ -83,6 +89,28 @@ async fn list_plugins(State(state): State<PluginState>) -> Json<Vec<PluginDescri
             .expect("plugin snapshot lock poisoned")
             .clone(),
     )
+}
+
+async fn start_flow(
+    State(state): State<PluginState>,
+    Json(flow): Json<FlowSpec>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    state
+        .runner
+        .start(state.root.clone(), flow)
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+    Ok(StatusCode::ACCEPTED)
+}
+
+async fn stop_flow(State(state): State<PluginState>) -> StatusCode {
+    state.runner.stop();
+    StatusCode::NO_CONTENT
+}
+
+async fn flow_status(State(state): State<PluginState>) -> Json<serde_json::Value> {
+    let running = state.runner.running.load(Ordering::SeqCst);
+    let logs = state.runner.logs.lock().unwrap().clone();
+    Json(serde_json::json!({ "running": running, "logs": logs }))
 }
 
 /// Install a trusted native plugin from two uploaded files.
@@ -176,6 +204,7 @@ mod tests {
         let response = router(PluginState {
             snapshot,
             root: std::env::temp_dir().join("phlox-api-test"),
+            runner: RunState::default(),
         })
         .oneshot(
             axum::http::Request::builder()

@@ -298,6 +298,36 @@
       button.disabled = false;
     }
   });
+  const startButton = document.getElementById("start-flow");
+  const stopButton = document.getElementById("stop-flow");
+  const flowLogs = document.getElementById("flow-logs");
+  startButton.addEventListener("click", async () => {
+    const flow = {
+      nodes: Array.from(nodes, ([id, node]) => ({ id, type: node.type })),
+      edges: links.map(link => ({ from: link.from, fromPort: link.fromPort, to: link.to, toPort: link.toPort }))
+    };
+    try {
+      const response = await fetch("/api/flow/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(flow) });
+      if (!response.ok) throw new Error(await response.text());
+      status.textContent = "Flow started.";
+    } catch (error) { status.textContent = "Start failed: " + error.message; }
+  });
+  stopButton.addEventListener("click", async () => {
+    await fetch("/api/flow/stop", { method: "POST" });
+    status.textContent = "Flow stopped.";
+  });
+  async function refreshRun() {
+    try {
+      const response = await fetch("/api/flow/status");
+      if (!response.ok) return;
+      const state = await response.json();
+      startButton.disabled = state.running;
+      stopButton.disabled = !state.running;
+      flowLogs.textContent = state.logs.join("\n");
+    } catch { /* server is temporarily unavailable */ }
+  }
+  setInterval(refreshRun, 500);
+  refreshRun();
   updateNodes();
   loadPalette();
 })();

@@ -260,3 +260,12 @@ mod tests {
         fs::remove_dir_all(root).unwrap();
     }
 }
+
+impl PluginRegistry {
+    /// Locate the loaded plugin advertising a particular node type.
+    pub fn plugin_for_type(&self, node_type: &str) -> Option<&LoadedPlugin> {
+        self.active
+            .values()
+            .find(|plugin| plugin.info.nodes.iter().any(|node| node.id == node_type))
+    }
+}

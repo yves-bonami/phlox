@@ -35,6 +35,7 @@ fn app() -> Router {
         .merge(phlox_api::router(phlox_api::PluginState {
             snapshot: phlox_api::start_plugin_discovery(plugin_directory()),
             root: plugin_directory(),
+            runner: phlox_runtime::RunState::default(),
         }))
         .route("/", get(render_index))
         .route("/health", get(|| async { "ok" }))

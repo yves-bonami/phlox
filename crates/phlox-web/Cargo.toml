@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+phlox-runtime = { workspace = true }
 askama = "0.16.1"
 axum = "0.8.9"
 phlox-api = { workspace = true }

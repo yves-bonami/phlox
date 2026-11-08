@@ -49,3 +49,5 @@ button { padding: 10px 14px; border-radius: 8px; border: 1px solid #466b54; colo
 .connection-remove:hover circle { fill: #ce465b; }
 .connection-remove:focus { outline: none; }
 .connection-remove:focus circle { stroke: white; stroke-width: 3; }
+
+#flow-logs { font-size: 11px; max-height: 200px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }

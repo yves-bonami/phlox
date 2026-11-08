@@ -721,6 +721,7 @@ version = "0.1.0"
 dependencies = [
  "phlox-core",
  "phlox-plugin-host",
+ "serde",
 ]
 
 [[package]]
@@ -730,6 +731,7 @@ dependencies = [
  "askama",
  "axum",
  "phlox-api",
+ "phlox-runtime",
  "tokio",
  "tower-http",
 ]
