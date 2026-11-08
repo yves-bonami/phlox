@@ -1,6 +1,10 @@
 [package]
 name = "phlox-api"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
 
 [dependencies]
+phlox-core = { workspace = true }
+phlox-runtime = { workspace = true }
+phlox-plugin-host = { workspace = true }

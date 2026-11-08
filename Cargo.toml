@@ -6,3 +6,13 @@ members = ["crates/*"]
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
+
+[workspace.dependencies]
+phlox-core = { path = "crates/phlox-core" }
+phlox-plugin-api = { path = "crates/phlox-plugin-api" }
+phlox-plugin-sdk = { path = "crates/phlox-plugin-sdk" }
+phlox-plugin-host = { path = "crates/phlox-plugin-host" }
+phlox-runtime = { path = "crates/phlox-runtime" }
+phlox-api = { path = "crates/phlox-api" }
+phlox-cli = { path = "crates/phlox-cli" }
+phlox-web = { path = "crates/phlox-web" }

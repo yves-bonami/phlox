@@ -5,10 +5,19 @@ version = 4
 [[package]]
 name = "phlox-api"
 version = "0.1.0"
+dependencies = [
+ "phlox-core",
+ "phlox-plugin-host",
+ "phlox-runtime",
+]
 
 [[package]]
 name = "phlox-cli"
 version = "0.1.0"
+dependencies = [
+ "phlox-plugin-host",
+ "phlox-runtime",
+]
 
 [[package]]
 name = "phlox-core"
@@ -21,15 +30,29 @@ version = "0.1.0"
 [[package]]
 name = "phlox-plugin-host"
 version = "0.1.0"
+dependencies = [
+ "phlox-core",
+ "phlox-plugin-api",
+]
 
 [[package]]
 name = "phlox-plugin-sdk"
 version = "0.1.0"
+dependencies = [
+ "phlox-plugin-api",
+]
 
 [[package]]
 name = "phlox-runtime"
 version = "0.1.0"
+dependencies = [
+ "phlox-core",
+ "phlox-plugin-host",
+]
 
 [[package]]
 name = "phlox-web"
 version = "0.1.0"
+dependencies = [
+ "phlox-api",
+]
