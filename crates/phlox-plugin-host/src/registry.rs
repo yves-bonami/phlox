@@ -190,13 +190,13 @@ impl PluginRegistry {
         mut on_change: impl FnMut(&Self) + Send + 'static,
     ) -> Result<(), RegistryError> {
         fs::create_dir_all(&self.root)?;
-        self.refresh();
-        on_change(&self);
         let (sender, receiver) = mpsc::channel();
         let mut watcher: RecommendedWatcher = notify::recommended_watcher(move |result| {
             let _ = sender.send(result);
         })?;
         watcher.watch(&self.root, RecursiveMode::Recursive)?;
+        self.refresh();
+        on_change(&self);
         while let Ok(event) = receiver.recv() {
             if event.is_ok() {
                 let old = self.active.len();

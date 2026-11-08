@@ -617,9 +617,14 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 name = "phlox-api"
 version = "0.1.0"
 dependencies = [
+ "axum",
  "phlox-core",
  "phlox-plugin-host",
  "phlox-runtime",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower",
 ]
 
 [[package]]

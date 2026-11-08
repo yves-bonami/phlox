@@ -19,6 +19,11 @@ async fn render_index() -> Result<Html<String>, StatusCode> {
 
 fn app() -> Router {
     Router::new()
+        .merge(phlox_api::router(phlox_api::start_plugin_discovery(
+            std::env::var_os("PHLOX_PLUGIN_DIR")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|| std::path::PathBuf::from("/var/lib/phlox/plugins")),
+        )))
         .route("/", get(render_index))
         .route("/health", get(|| async { "ok" }))
         .nest_service(
