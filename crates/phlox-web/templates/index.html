@@ -15,6 +15,13 @@
     <aside>
       <h2>Flow</h2>
       <p>Move nodes by dragging. Drag from an output port to an input port to connect them (or click both ports).</p>
+      <h2>Install plugin</h2>
+      <p>Upload a trusted Linux native plugin (.so) and its plugin.toml manifest.</p>
+      <form id="plugin-install-form">
+        <label>Manifest <input type="file" name="manifest" accept=".toml" required></label>
+        <label>Library <input type="file" name="library" accept=".so" required></label>
+        <button type="submit">Install plugin</button>
+      </form>
       <h2>Node types</h2>
       <p>Plugin types discovered by Phlox. Click one to add a node.</p>
       <div id="node-palette" aria-live="polite">Loading plugins…</div>

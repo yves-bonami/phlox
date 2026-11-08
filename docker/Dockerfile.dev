@@ -1,11 +1,21 @@
+FROM rust:1.99-bookworm AS example-builder
+WORKDIR /build
+COPY . .
+RUN cargo build --manifest-path examples/native-plugin/Cargo.toml
+
 FROM rust:1.99-bookworm
 ARG LOCAL_UID=1000
 ARG LOCAL_GID=1000
 RUN groupadd --gid "${LOCAL_GID}" phlox \
     && useradd --uid "${LOCAL_UID}" --gid "${LOCAL_GID}" --create-home phlox \
-    && mkdir -p /workspace/target /var/lib/phlox/plugins /home/phlox/.cargo/registry /home/phlox/.cargo/git \
+    && mkdir -p /workspace/target /var/lib/phlox/plugins /home/phlox/.cargo/registry /home/phlox/.cargo/git /opt/phlox/example \
     && chown -R phlox:phlox /workspace /var/lib/phlox /home/phlox
+COPY --from=example-builder /build/examples/native-plugin/target/debug/libphlox_example_plugin.so /opt/phlox/example/
+COPY examples/native-plugin/plugin.toml /opt/phlox/example/
+COPY docker/dev-entrypoint.sh /usr/local/bin/phlox-dev-entrypoint
+RUN chmod +x /usr/local/bin/phlox-dev-entrypoint
 ENV CARGO_HOME=/home/phlox/.cargo
 WORKDIR /workspace
 USER phlox
+ENTRYPOINT ["/usr/local/bin/phlox-dev-entrypoint"]
 CMD ["cargo", "run", "-p", "phlox-web"]

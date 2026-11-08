@@ -1,0 +1,5 @@
+**/target
+.git
+.dev
+**/Cargo.lock
+!Cargo.lock

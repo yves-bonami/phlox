@@ -32,9 +32,10 @@ fn plugin_directory() -> std::path::PathBuf {
 
 fn app() -> Router {
     Router::new()
-        .merge(phlox_api::router(phlox_api::start_plugin_discovery(
-            plugin_directory(),
-        )))
+        .merge(phlox_api::router(phlox_api::PluginState {
+            snapshot: phlox_api::start_plugin_discovery(plugin_directory()),
+            root: plugin_directory(),
+        }))
         .route("/", get(render_index))
         .route("/health", get(|| async { "ok" }))
         .nest_service(

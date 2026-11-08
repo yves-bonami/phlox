@@ -8,9 +8,11 @@ license.workspace = true
 phlox-core = { workspace = true }
 phlox-runtime = { workspace = true }
 phlox-plugin-host = { workspace = true }
-axum = "0.8.9"
+axum = { version = "0.8.9", features = ["multipart"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
+uuid = { version = "1.29.1", features = ["v4"] }
+tokio = { version = "1.54.1", features = ["fs"] }
 
 [dev-dependencies]
 tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread"] }

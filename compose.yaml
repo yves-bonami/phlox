@@ -18,9 +18,10 @@ services:
       - cargo-registry:/home/phlox/.cargo/registry
       - cargo-git:/home/phlox/.cargo/git
       - cargo-target:/workspace/target
-      - ./.dev/plugins:/var/lib/phlox/plugins
+      - plugin-data:/var/lib/phlox/plugins
 
 volumes:
   cargo-registry:
   cargo-git:
   cargo-target:
+  plugin-data:

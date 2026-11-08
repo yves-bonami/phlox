@@ -35,3 +35,8 @@ button { padding: 10px 14px; border-radius: 8px; border: 1px solid #466b54; colo
 #node-palette { display: flex; flex-direction: column; gap: 7px; margin-bottom: 14px; overflow-wrap: anywhere; }
 .palette-node { text-align: left; width: 100%; color: #e6f2eb; background: #253647; border-color: #486071; }
 #refresh-plugins { margin-bottom: 10px; }
+
+#plugin-install-form { display: flex; flex-direction: column; gap: 10px; margin-bottom: 28px; }
+#plugin-install-form label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: #becbd8; }
+#plugin-install-form input { width: 100%; font-size: 12px; }
+#plugin-install-form button:disabled { opacity: .55; cursor: wait; }

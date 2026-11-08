@@ -192,6 +192,30 @@
     }
   }
   document.getElementById("refresh-plugins").addEventListener("click", loadPalette);
+  document.getElementById("plugin-install-form").addEventListener("submit", async event => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const button = form.querySelector("button");
+    button.disabled = true;
+    status.textContent = "Installing plugin…";
+    try {
+      const response = await fetch("/api/plugins/install", {
+        method: "POST",
+        body: new FormData(form)
+      });
+      if (!response.ok) throw new Error((await response.text()).slice(0, 300));
+      form.reset();
+      status.textContent = "Plugin installed. Refreshing palette…";
+      // The registry watcher activates new plugins asynchronously.
+      await new Promise(resolve => setTimeout(resolve, 350));
+      await loadPalette();
+      status.textContent = "Plugin installation completed.";
+    } catch (error) {
+      status.textContent = "Install failed: " + error.message;
+    } finally {
+      button.disabled = false;
+    }
+  });
   updateNodes();
   loadPalette();
 })();
