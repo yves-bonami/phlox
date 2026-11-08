@@ -15,29 +15,18 @@
     <aside>
       <h2>Flow</h2>
       <p>Move nodes by dragging. Drag from an output port to an input port to connect them (or click both ports).</p>
+      <h2>Node types</h2>
+      <p>Plugin types discovered by Phlox. Click one to add a node.</p>
+      <div id="node-palette" aria-live="polite">Loading plugins…</div>
+      <button id="refresh-plugins" type="button">Refresh plugins</button>
       <button id="reset" type="button">Reset canvas</button>
       <p id="status" role="status" aria-live="polite">Ready</p>
     </aside>
     <section class="workspace" aria-label="Flow workspace">
-      <div class="toolbar"><strong>Untitled flow</strong><span>2 nodes · Drag to arrange</span></div>
+      <div class="toolbar"><strong>Untitled flow</strong><span id="node-count">0 nodes · Drag to arrange</span></div>
       <svg id="flow-canvas" role="img" aria-label="Interactive flow graph with two nodes" viewBox="0 0 960 540" preserveAspectRatio="xMidYMid meet">
         <g id="connections"></g>
-        <g class="node" data-id="source" transform="translate(140 180)">
-          <rect class="node-body" width="230" height="120" rx="12"></rect>
-          <rect class="node-header" width="230" height="40" rx="12"></rect>
-          <text class="node-title" x="18" y="26">Source</text>
-          <text class="node-subtitle" x="18" y="79">Example generator</text>
-          <circle class="port port-output" data-node="source" data-port="out" cx="230" cy="91" r="9"></circle>
-          <text class="port-label" x="210" y="95" text-anchor="end">out</text>
-        </g>
-        <g class="node" data-id="sink" transform="translate(570 180)">
-          <rect class="node-body" width="230" height="120" rx="12"></rect>
-          <rect class="node-header" width="230" height="40" rx="12"></rect>
-          <text class="node-title" x="18" y="26">Log</text>
-          <text class="node-subtitle" x="18" y="79">Example sink</text>
-          <circle class="port port-input" data-node="sink" data-port="in" cx="0" cy="91" r="9"></circle>
-          <text class="port-label" x="20" y="95">in</text>
-        </g>
+
       </svg>
       <div class="footer">Prototype only — changes are not persisted or deployed.</div>
     </section>

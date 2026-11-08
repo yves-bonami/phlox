@@ -31,3 +31,7 @@ button { padding: 10px 14px; border-radius: 8px; border: 1px solid #466b54; colo
 @media (max-width: 700px) { main { flex-direction: column; } aside { width: 100%; padding: 14px; } #flow-canvas { min-height: 400px; } }
 
 .connection-preview { stroke: #bcecc4; stroke-dasharray: 8 6; opacity: .85; }
+
+#node-palette { display: flex; flex-direction: column; gap: 7px; margin-bottom: 14px; overflow-wrap: anywhere; }
+.palette-node { text-align: left; width: 100%; color: #e6f2eb; background: #253647; border-color: #486071; }
+#refresh-plugins { margin-bottom: 10px; }
