@@ -121,4 +121,12 @@ These decisions continue the same conversation. **MVP** means accepted direction
 
 ## Precedence
 
-This register is the canonical record of accepted decisions (1–80). Architecture and MVP documents should follow it. Implementation-level details not explicitly decided remain open; don't interpret a proposed mechanism as an accepted requirement.
+This register is the canonical record of accepted decisions (1–83). Architecture and MVP documents should follow it. Implementation-level details not explicitly decided remain open; don't interpret a proposed mechanism as an accepted requirement.
+
+## Frontend architecture (subsequent decision)
+
+- **81 — Frontend stack:** Build the MVP frontend with Axum, Askama, HTMX, and _hyperscript. Avoid React/Angular as primary frameworks.
+- **82 — Visual editor:** Use an SVG graph editor; small, focused vanilla JavaScript is explicitly allowed for dragging, zooming, panning, and wiring when _hyperscript alone is impractical. Server remains authoritative for graph validation.
+- **83 — Frontend timing:** Include editor scaffolding in Milestone 0 and a usable visual editor in the initial MVP, rather than deferring all UI work until after protocol support.
+
+The frontend uses the same graph and node metadata contracts as the runtime. Fancy canvas features and advanced live monitoring may follow later.

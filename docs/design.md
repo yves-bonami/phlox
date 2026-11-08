@@ -5,14 +5,14 @@ Updated: 2026-11-08.
 
 ## Purpose
 
-Phlox is a Rust-based, protocol-agnostic integration engine. Independently developed runtime-installable plugins (for example `phlox-mqtt`) contribute nodes that participate in directed flows. It is *not* intended to reproduce Node-RED one-to-one. The library/runtime is the product; CLI, REST API, and future GUI are interfaces.
+Phlox is a Rust-based, protocol-agnostic integration engine. Independently developed runtime-installable plugins (for example `phlox-mqtt`) contribute nodes that participate in directed flows. It is *not* intended to reproduce Node-RED one-to-one. The library/runtime is the product; CLI, REST API, and the MVP web frontend are interfaces.
 
 **Authority:** [decisions.md](decisions.md) is the canonical decision register. [mvp.md](mvp.md) defines the narrower first implementation target.
 
 ## High-level architecture
 
 ```text
-CLI / REST (WebSocket later)       YAML (SQLite later)
+CLI / REST / HTMX frontend          YAML (SQLite later)
             |                           |
             +-------------+-------------+
                           |
@@ -31,7 +31,8 @@ CLI / REST (WebSocket later)       YAML (SQLite later)
 - **phlox-plugin-api:** Versioned **C ABI contract** for discovery and execution, opaque host-owned message handles, host callbacks, structured errors, explicit ownership and lifetime rules.
 - **phlox-plugin-sdk:** Safe ergonomic Rust traits/wrappers for third-party plugin authors. It translates between native Rust APIs and the C ABI; it must not expose unstable Rust ABI across the dynamic library boundary.
 - **phlox-plugin-host:** Manifest discovery, compatibility checks, secure installation staging, `libloading` integration, registration, library lifetime management, active version selection.
-- **phlox-cli / phlox-api:** CLI and management REST API; future WebSocket events and graphical editor.
+- **phlox-cli / phlox-api:** CLI and Axum management REST endpoints; future WebSocket events.
+- **phlox-web:** Askama-rendered HTML, HTMX and _hyperscript interactions, with a small vanilla JavaScript/SVG flow canvas. No SPA framework required.
 
 ## Plugin mechanics
 
@@ -67,7 +68,7 @@ Flow definitions are YAML first, explicitly schema-versioned. Deployment is conf
 
 ## Operations and external integration
 
-CLI and REST manage flow/plugin lifecycle and validation. WebSocket events and a GUI come later. API-key authentication is planned for MVP (disabled only when explicitly selected for local development); OIDC and RBAC are future scope. Application configuration uses TOML and environment overrides; secrets use named references to environment variables or mounted files initially, encrypted storage later.
+CLI and REST manage flow/plugin lifecycle and validation. The web UI is part of the initial MVP: server-rendered plugin/connection/flow management plus a visual editor for placing nodes, connecting ports, editing configuration, and deploying. Use HTMX for partial HTML updates, _hyperscript for declarative UI interactions, and small isolated vanilla JavaScript for canvas drag/pan/zoom and connection manipulation where necessary. The canvas and backend must share the same graph model; client coordinates are presentation metadata, not execution semantics. Server-side validation remains authoritative. Start with simple status refresh; WebSocket/SSE may be added when real-time monitoring warrants it. A single Rust/Axum server can serve templates and static assets in Docker. No React or Angular frontend is planned. API-key authentication is planned for MVP (disabled only when explicitly selected for local development); OIDC and RBAC are future scope. Application configuration uses TOML and environment overrides; secrets use named references to environment variables or mounted files initially, encrypted storage later.
 
 The engine exposes status, structured logs, error counts, message counters, and queue diagnostics. Optional bounded per-flow message tracing is useful for debugging but should redact sensitive data. OpenTelemetry exporters are future work. Importing flows with missing dependencies is allowed in an inactive/invalid state until references are fixed, with interactive mapping later.
 

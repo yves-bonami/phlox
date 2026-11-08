@@ -5,9 +5,9 @@ Scope: small vertical slice first, with subsequent MVP increments. No plugin cod
 
 ## Core principle
 
-The first deliverable must prove: **Phlox can load a separately compiled Linux native plugin at runtime, discover a node, and route a typed message through a flow without recompiling the host.**
+The first technical proof must show: **Phlox can load a separately compiled Linux native plugin at runtime, discover a node, and route a typed message through a flow without recompiling the host.** In parallel, the MVP must establish a minimal usable **visual editor** from the outset.
 
-This is more valuable initially than a UI, marketplace, SQLite persistence, full transformation catalog, or broad protocol support.
+Avoid a polished marketplace, SQLite persistence, full transformation catalog, or broad protocol support initially. The editor itself is not deferred.
 
 ## Milestone 0 — Repository and test scaffolding
 
@@ -15,9 +15,11 @@ This is more valuable initially than a UI, marketplace, SQLite persistence, full
 - CI for `cargo fmt --check`, `cargo clippy`, and tests.
 - Conventional Commits.
 - Minimal `README.md` and example configuration.
+- Scaffold `phlox-web` using Axum + Askama + HTMX + _hyperscript; serve one web page and static assets from Rust.
+- Create an early SVG-based editor prototype (two nodes, draggable positioning, link creation) using minimal vanilla JavaScript where _hyperscript becomes unwieldy.
 - Unit tests for IDs, graph validation, and basic typed values.
 
-**Exit:** A clean workspace builds and tests on Linux.
+**Exit:** A clean workspace builds and tests on Linux; a browser displays an editable two-node canvas (in-memory only).
 
 ## Milestone 1 — Native plugin vertical slice
 
@@ -29,7 +31,7 @@ This is more valuable initially than a UI, marketplace, SQLite persistence, full
 - Implement a test plugin that emits one typed value; built-in log sink receives it through an in-memory queue.
 - Start and stop a simple flow through CLI.
 
-**Exit:** Build a plugin separately, install it while Phlox is running, activate it, and verify a message reaches the log sink **without rebuilding or restarting Phlox**. Add negative tests for incompatible ABI and malformed manifest.
+**Exit:** Build a plugin separately, install it while Phlox is running, activate it, and verify a message reaches the log sink **without rebuilding or restarting Phlox**. The frontend can show the discovered node type. Add negative tests for incompatible ABI and malformed manifest.
 
 ## Milestone 2 — Reliable flow runtime foundations
 
@@ -39,6 +41,7 @@ This is more valuable initially than a UI, marketplace, SQLite persistence, full
 - Source/received UTC timestamps, quality and typed metadata.
 - At-most-once error behavior, optional error output, configurable node restart policy.
 - Flow graph/YAML validation, schema versioning, and explicit deployment defaults.
+- Hook the SVG editor to the same graph definitions, enable configuration forms from schema, save/validate/deploy flows using HTMX responses.
 - Test fan-out, FIFO per edge, congestion, stop/restart, cycles (including behavior under full buffers), and failed plugin calls.
 
 **Exit:** Graph behavior and lifecycle have deterministic automated tests; there is no promise of native crash isolation.
@@ -57,6 +60,8 @@ This is more valuable initially than a UI, marketplace, SQLite persistence, full
 ## Milestone 4 — Small operator-friendly release
 
 - REST management endpoints (with safe networking defaults/API-key auth), plugin/flow status.
+- Complete the first useful server-rendered UI pages: plugin install/status, connections, flow list/editor, start/stop/deploy, basic node health and message activity.
+- Keep SVG graph interactions in isolated vanilla JS; use HTMX + _hyperscript for the rest. Test browser interactions and server-side validation.
 - Global and flow-local connection references; TOML/env configuration and file/env secret references.
 - Built-in basic mapping/filter/type conversion, timer/interval, and internal flow channels.
 - In-memory flow variables, basic debug tracing with caps, structured logs and queue metrics.
@@ -67,7 +72,7 @@ This is more valuable initially than a UI, marketplace, SQLite persistence, full
 
 ## Deferred deliberately
 
-GitHub Releases installation, SQLite managed configuration/history, selective node restarts, persistent state/variables, full WebSocket editor support, graphical UI, WASM scripting engine, OIDC/RBAC, full OTEL export, robust plugin signing, multi-platform builds, external plugin sandboxing, durable delivery, and complex scheduling/dependency management.
+GitHub Releases installation, SQLite managed configuration/history, selective node restarts, persistent state/variables, advanced real-time WebSocket/SSE monitoring, complex visual editor features (multi-select, undo/redo, subflow editing), WASM scripting engine, OIDC/RBAC, full OTEL export, robust plugin signing, multi-platform builds, external plugin sandboxing, durable delivery, and complex scheduling/dependency management.
 
 ## Prioritized technical questions to answer through code
 
