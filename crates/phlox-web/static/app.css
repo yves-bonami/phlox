@@ -40,3 +40,12 @@ button { padding: 10px 14px; border-radius: 8px; border: 1px solid #466b54; colo
 #plugin-install-form label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: #becbd8; }
 #plugin-install-form input { width: 100%; font-size: 12px; }
 #plugin-install-form button:disabled { opacity: .55; cursor: wait; }
+
+.connection-hit { fill: none; stroke: transparent; stroke-width: 20; cursor: pointer; pointer-events: stroke; }
+.wire:hover .connection, .wire-selected .connection { stroke: #e1f7a7; stroke-width: 4; }
+.connection-remove { cursor: pointer; }
+.connection-remove circle { fill: #9c3342; stroke: #ffc0c8; stroke-width: 2; }
+.connection-remove text { fill: white; font-size: 22px; font-weight: 700; pointer-events: none; }
+.connection-remove:hover circle { fill: #ce465b; }
+.connection-remove:focus { outline: none; }
+.connection-remove:focus circle { stroke: white; stroke-width: 3; }

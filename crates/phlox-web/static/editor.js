@@ -10,6 +10,7 @@
   const links = [];
   let dragging = null, wiring = null, selected = null, suppressClick = false;
   let sequence = 0;
+  let selectedLink = null;
   const preview = document.createElementNS("http://www.w3.org/2000/svg", "path");
   preview.setAttribute("class", "connection connection-preview");
   preview.style.pointerEvents = "none";
@@ -62,7 +63,24 @@
     for (const link of links) {
       const from = nodes.get(link.from), to = nodes.get(link.to);
       if (!from || !to) continue;
-      connections.append(element("path", { class: "connection", d: path(from.x + 230, from.y + 91, to.x, to.y + 91) }));
+      const x1 = from.x + 230, y1 = from.y + 91;
+      const x2 = to.x, y2 = to.y + 91;
+      const d = path(x1, y1, x2, y2);
+      const wire = element("g", { class: "wire" + (selectedLink === link ? " wire-selected" : "") });
+      wire.append(
+        element("path", { class: "connection-hit", d, "data-link": links.indexOf(link) }),
+        element("path", { class: "connection", d, "pointer-events": "none" })
+      );
+      connections.append(wire);
+      if (selectedLink === link) {
+        const midX = (x1 + x2) / 2, midY = (y1 + y2) / 2;
+        const remove = element("g", { class: "connection-remove", role: "button", tabindex: "0", "aria-label": "Remove selected connection" });
+        remove.append(
+          element("circle", { cx: midX, cy: midY, r: 15 }),
+          element("text", { x: midX, y: midY + 5, "text-anchor": "middle" }, "×")
+        );
+        connections.append(remove);
+      }
     }
     if (wiring?.moved) drawPreview(wiring.current);
     count.textContent = nodes.size + " nodes · Drag to arrange";
@@ -73,11 +91,20 @@
     preview.setAttribute("d", path(source.x + 230, source.y + 91, at.x, at.y));
     connections.append(preview);
   }
+  function removeSelectedLink() {
+    if (!selectedLink) return;
+    const index = links.indexOf(selectedLink);
+    if (index >= 0) links.splice(index, 1);
+    selectedLink = null;
+    status.textContent = "Connection removed.";
+    updateNodes();
+  }
   function connect(from, to) {
     if (from === to || links.some(l => l.from === from && l.to === to)) {
       status.textContent = "Connection already exists or is invalid.";
       return;
     }
+    selectedLink = null;
     links.push({ from, to });
     status.textContent = "Connected " + from + " → " + to;
     updateNodes();
@@ -87,6 +114,7 @@
   }
   svg.addEventListener("pointerdown", event => {
     if (event.button !== 0) return;
+    if (event.target.closest(".connection-hit, .connection-remove")) return;
     const output = event.target.closest(".port-output");
     if (output) {
       event.preventDefault();
@@ -140,8 +168,29 @@
   svg.addEventListener("pointercancel", event => endPointer(event, true));
   svg.addEventListener("click", event => {
     if (suppressClick) return;
+    if (event.target.closest(".connection-remove")) {
+      removeSelectedLink();
+      return;
+    }
+    const hit = event.target.closest(".connection-hit");
+    if (hit) {
+      selectedLink = links[Number(hit.dataset.link)] || null;
+      clearSelected();
+      status.textContent = "Connection selected — click × or press Delete to remove.";
+      updateNodes();
+      return;
+    }
     const port = event.target.closest(".port");
-    if (!port) return;
+    if (!port) {
+      if (selectedLink) {
+        selectedLink = null;
+        updateNodes();
+      }
+      clearSelected();
+      return;
+    }
+    selectedLink = null;
+    updateNodes();
     if (port.classList.contains("port-output")) {
       clearSelected();
       selected = port;
@@ -152,10 +201,29 @@
       clearSelected();
     }
   });
+  document.addEventListener("keydown", event => {
+    if (event.target.closest("input, textarea, select, [contenteditable]")) return;
+    if (event.key === "Escape") {
+      clearSelected();
+      selectedLink = null;
+      updateNodes();
+    }
+    if (selectedLink && (event.key === "Delete" || event.key === "Backspace")) {
+      event.preventDefault();
+      removeSelectedLink();
+    }
+  });
+  connections.addEventListener("keydown", event => {
+    if (event.target.closest(".connection-remove") && (event.key === "Enter" || event.key === " ")) {
+      event.preventDefault();
+      removeSelectedLink();
+    }
+  });
   document.getElementById("reset").addEventListener("click", () => {
     nodes.forEach(node => node.group.remove());
     nodes.clear();
     links.length = 0;
+    selectedLink = null;
     clearSelected();
     wiring = null;
     preview.remove();
