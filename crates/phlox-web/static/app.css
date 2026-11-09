@@ -1,320 +1,74 @@
-//! In-memory asynchronous flow runner with per-edge bounded queues.
+:root { font-family: system-ui, sans-serif; color: #e9edf2; background: #0c121b; }
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; }
+header { display: flex; gap: 28px; align-items: center; height: 64px; padding: 0 24px; border-bottom: 1px solid #263445; }
+header strong { color: #95e09d; letter-spacing: .18em; }
+header span { color: #9eaaba; }
+.badge { margin-left: auto; border: 1px solid #365343; padding: 6px 12px; border-radius: 20px; font-size: 12px; }
+main { display: flex; min-height: calc(100vh - 64px); }
+aside { width: 260px; padding: 25px 22px; background: #111c29; border-right: 1px solid #263445; }
+aside h2 { margin: 0 0 18px; font-size: 18px; }
+aside p { font-size: 14px; line-height: 1.6; color: #aab8c8; }
+button { padding: 10px 14px; border-radius: 8px; border: 1px solid #466b54; color: #a5e4af; background: #203329; cursor: pointer; }
+.workspace { min-width: 0; flex: 1; display: flex; flex-direction: column; }
+.toolbar, .footer { padding: 15px 24px; display: flex; justify-content: space-between; font-size: 13px; color: #9eacba; }
+.toolbar { border-bottom: 1px solid #263445; }
+.toolbar strong { color: #e8edf4; }
+.footer { border-top: 1px solid #263445; }
+#flow-canvas { flex: 1; width: 100%; min-height: 440px; background-color: #101925; background-image: radial-gradient(#314050 1px, transparent 1px); background-size: 22px 22px; touch-action: none; }
+.node { cursor: grab; }
+.node.dragging { cursor: grabbing; }
+.node-body { fill: #1a2a39; stroke: #506377; stroke-width: 2; }
+.node-header { fill: #2b4152; }
+.node-title { fill: white; font-size: 16px; font-weight: 650; pointer-events: none; }
+.node-subtitle { fill: #a5b5c5; font-size: 13px; pointer-events: none; }
+.port { cursor: crosshair; stroke: #182533; stroke-width: 3; }
+.port-output { fill: #97e4a2; }
+.port-input { fill: #8abafe; }
+.port.selected { stroke: #fff; stroke-width: 4; }
+.port-label { font-size: 12px; fill: #bbcad8; pointer-events: none; }
+.connection { fill: none; stroke: #88d9a2; stroke-width: 3; }
+@media (max-width: 700px) { main { flex-direction: column; } aside { width: 100%; padding: 14px; } #flow-canvas { min-height: 400px; } }
 
-use phlox_plugin_host::registry::PluginRegistry;
-use std::{
-    path::PathBuf,
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
-    },
-    thread,
-    time::Duration,
-};
+.connection-preview { stroke: #bcecc4; stroke-dasharray: 8 6; opacity: .85; }
 
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct FlowSpec {
-    pub nodes: Vec<FlowNode>,
-    pub edges: Vec<FlowEdge>,
-}
+#node-palette { display: flex; flex-direction: column; gap: 7px; margin-bottom: 14px; overflow-wrap: anywhere; }
+.palette-node { text-align: left; width: 100%; color: #e6f2eb; background: #253647; border-color: #486071; }
+#refresh-plugins { margin-bottom: 10px; }
 
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct FlowNode {
-    pub id: String,
-    #[serde(rename = "type")]
-    pub node_type: String,
-    #[serde(default)]
-    pub configuration: serde_json::Value,
-}
+#plugin-install-form { display: flex; flex-direction: column; gap: 10px; margin-bottom: 28px; }
+#plugin-install-form label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: #becbd8; }
+#plugin-install-form input { width: 100%; font-size: 12px; }
+#plugin-install-form button:disabled { opacity: .55; cursor: wait; }
 
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct FlowEdge {
-    pub from: String,
-    #[serde(rename = "fromPort")]
-    pub from_port: String,
-    pub to: String,
-    #[serde(rename = "toPort")]
-    pub to_port: String,
-}
+.connection-hit { fill: none; stroke: transparent; stroke-width: 20; cursor: pointer; pointer-events: stroke; }
+.wire:hover .connection, .wire-selected .connection { stroke: #e1f7a7; stroke-width: 4; }
+.connection-remove { cursor: pointer; }
+.connection-remove circle { fill: #9c3342; stroke: #ffc0c8; stroke-width: 2; }
+.connection-remove text { fill: white; font-size: 22px; font-weight: 700; pointer-events: none; }
+.connection-remove:hover circle { fill: #ce465b; }
+.connection-remove:focus { outline: none; }
+.connection-remove:focus circle { stroke: white; stroke-width: 3; }
 
-#[derive(Clone, Default)]
-pub struct RunState {
-    pub running: Arc<AtomicBool>,
-    pub logs: Arc<Mutex<Vec<String>>>,
-    worker: Arc<Mutex<Option<thread::JoinHandle<()>>>>,
-}
+#flow-logs { font-size: 11px; max-height: 200px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 
-impl RunState {
-    pub fn start(&self, root: PathBuf, flow: FlowSpec) -> Result<(), String> {
-        if self.running.swap(true, Ordering::SeqCst) {
-            return Err("Flow already running".into());
-        }
-        // After Stop, join the previous thread before making Running true again.
-        if let Some(worker) = self.worker.lock().unwrap().take() {
-            let _ = worker.join();
-        }
-        let mut registry = PluginRegistry::new(root);
-        let failures = registry.refresh();
-        if !failures.is_empty() {
-            self.running.store(false, Ordering::SeqCst);
-            return Err(format!("Plugin errors: {failures:?}"));
-        }
-        for node in &flow.nodes {
-            if registry.plugin_for_type(&node.node_type).is_none() {
-                self.running.store(false, Ordering::SeqCst);
-                return Err(format!("Unknown node type: {}", node.node_type));
-            }
-        }
-        if flow.nodes.is_empty() || flow.edges.is_empty() {
-            self.running.store(false, Ordering::SeqCst);
-            return Err("Flow must contain nodes and connections".into());
-        }
-        for edge in &flow.edges {
-            let source = flow
-                .nodes
-                .iter()
-                .find(|n| n.id == edge.from)
-                .ok_or_else(|| format!("Missing source node {}", edge.from));
-            let target = flow
-                .nodes
-                .iter()
-                .find(|n| n.id == edge.to)
-                .ok_or_else(|| format!("Missing target node {}", edge.to));
-            let ports_valid = (|| {
-                let source = source.ok()?;
-                let target = target.ok()?;
-                let output = registry
-                    .plugin_for_type(&source.node_type)?
-                    .info
-                    .nodes
-                    .iter()
-                    .find(|n| n.id == source.node_type)?
-                    .schema
-                    .get("x-phlox-ports")?
-                    .get("outputs")?
-                    .as_array()?
-                    .iter()
-                    .find(|port| {
-                        port.get("name").and_then(|v| v.as_str()) == Some(edge.from_port.as_str())
-                    })?;
-                let input = registry
-                    .plugin_for_type(&target.node_type)?
-                    .info
-                    .nodes
-                    .iter()
-                    .find(|n| n.id == target.node_type)?
-                    .schema
-                    .get("x-phlox-ports")?
-                    .get("inputs")?
-                    .as_array()?
-                    .iter()
-                    .find(|port| {
-                        port.get("name").and_then(|v| v.as_str()) == Some(edge.to_port.as_str())
-                    })?;
-                let output_type = output.get("value_type").and_then(|v| v.as_str());
-                let input_type = input.get("value_type").and_then(|v| v.as_str());
-                Some(output_type.is_none() || input_type.is_none() || output_type == input_type)
-            })()
-            .unwrap_or(false);
-            if !ports_valid {
-                self.running.store(false, Ordering::SeqCst);
-                return Err(format!(
-                    "Invalid connection: {}.{} -> {}.{}",
-                    edge.from, edge.from_port, edge.to, edge.to_port
-                ));
-            }
-        }
-        let logs = self.logs.clone();
-        logs.lock().unwrap().clear();
-        let running = self.running.clone();
-        let worker = thread::spawn(move || {
-            let runtime = tokio::runtime::Builder::new_current_thread()
-                .enable_time()
-                .build()
-                .expect("Tokio runtime");
-            runtime.block_on(async move {
-                // Local tasks avoid requiring native libraries to be Send/Sync.
-                let local = tokio::task::LocalSet::new();
-                local
-                    .run_until(async move {
-                        let registry = std::rc::Rc::new(registry);
-                        let mut routes: std::collections::HashMap<
-                            (String, String),
-                            Vec<tokio::sync::mpsc::Sender<serde_json::Value>>,
-                        > = std::collections::HashMap::new();
-                        let mut consumers = Vec::new();
-                        for edge in &flow.edges {
-                            let (sender, receiver) =
-                                tokio::sync::mpsc::channel::<serde_json::Value>(64);
-                            routes
-                                .entry((edge.from.clone(), edge.from_port.clone()))
-                                .or_default()
-                                .push(sender);
-                            consumers.push((edge.clone(), receiver));
-                        }
-                        // Wire all sender routes before starting consumers: processors
-                        // must see their downstream queues, independent of edge ordering.
-                        for (edge, mut receiver) in consumers {
-                            let target =
-                                flow.nodes.iter().find(|n| n.id == edge.to).unwrap().clone();
-                            let target_port = edge.to_port.clone();
-                            let forwards: Vec<_> = routes
-                                .iter()
-                                .filter(|((id, _), _)| id == &target.id)
-                                .map(|((_, port), senders)| (port.clone(), senders.clone()))
-                                .collect();
-                            let registry = registry.clone();
-                            let logs = logs.clone();
-                            let running = running.clone();
-                            tokio::task::spawn_local(async move {
-                                while running.load(Ordering::SeqCst) {
-                                    let Some(value) = receiver.recv().await else {
-                                        break;
-                                    };
-                                    let plugin =
-                                        registry.plugin_for_type(&target.node_type).unwrap();
-                                    if forwards.is_empty() {
-                                        match plugin.consume(&target.node_type, &value) {
-                                            Ok(()) => push_log(
-                                                &logs,
-                                                format!(
-                                                    "{}.{target_port}: {value}",
-                                                    target.node_type
-                                                ),
-                                            ),
-                                            Err(error) => {
-                                                push_log(&logs, format!("Sink error: {error:?}"))
-                                            }
-                                        }
-                                    } else {
-                                        match plugin.process(
-                                            &target.node_type,
-                                            &target_port,
-                                            &value,
-                                        ) {
-                                            Ok(values) => {
-                                                for (port, transformed) in values {
-                                                    for (_, senders) in
-                                                        forwards.iter().filter(|(p, _)| *p == port)
-                                                    {
-                                                        for sender in senders {
-                                                            if sender
-                                                                .try_send(transformed.clone())
-                                                                .is_err()
-                                                            {
-                                                                push_log(
-                                                                    &logs,
-                                                                    format!(
-                                                                        "Queue full: {}.{port}",
-                                                                        target.node_type
-                                                                    ),
-                                                                );
-                                                            } else {
-                                                                push_log(
-                                                                    &logs,
-                                                                    format!(
-                                                                        "{}.{port}: {transformed}",
-                                                                        target.node_type
-                                                                    ),
-                                                                );
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            Err(error) => push_log(
-                                                &logs,
-                                                format!("Processor error: {error:?}"),
-                                            ),
-                                        }
-                                    }
-                                }
-                            });
-                        }
-                        for source in flow.nodes.iter().filter(|node| {
-                            routes.keys().any(|(id, _)| id == &node.id)
-                                && !flow.edges.iter().any(|edge| edge.to == node.id)
-                        }) {
-                            let source = source.clone();
-                            let output_routes: Vec<_> = routes
-                                .iter()
-                                .filter(|((id, _), _)| id == &source.id)
-                                .map(|((_, port), senders)| (port.clone(), senders.clone()))
-                                .collect();
-                            let registry = registry.clone();
-                            let running = running.clone();
-                            let logs = logs.clone();
-                            tokio::task::spawn_local(async move {
-                                let mut timer = tokio::time::interval(Duration::from_millis(
-                                    source.configuration.get("interval_ms").and_then(|v| v.as_u64()).unwrap_or(500).clamp(50, 60_000),
-                                ));
-                                timer.set_missed_tick_behavior(
-                                    tokio::time::MissedTickBehavior::Skip,
-                                );
-                                while running.load(Ordering::SeqCst) {
-                                    timer.tick().await;
-                                    if !running.load(Ordering::SeqCst) {
-                                        break;
-                                    }
-                                    match registry
-                                        .plugin_for_type(&source.node_type)
-                                        .unwrap()
-                                        .poll(&source.node_type)
-                                    {
-                                        Ok(values) => {
-                                            for (port, value) in values {
-                                                for (_, senders) in output_routes
-                                                    .iter()
-                                                    .filter(|(name, _)| *name == port)
-                                                {
-                                                    for sender in senders {
-                                                        if sender.try_send(value.clone()).is_err() {
-                                                            push_log(
-                                                                &logs,
-                                                                format!(
-                                                                    "Queue full: {}.{port}",
-                                                                    source.node_type
-                                                                ),
-                                                            );
-                                                        } else {
-                                                            push_log(
-                                                                &logs,
-                                                                format!(
-                                                                    "{}.{port}: {value}",
-                                                                    source.node_type
-                                                                ),
-                                                            );
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        Err(error) => {
-                                            push_log(&logs, format!("Source error: {error:?}"))
-                                        }
-                                    }
-                                }
-                            });
-                        }
-                        while running.load(Ordering::SeqCst) {
-                            tokio::time::sleep(Duration::from_millis(50)).await;
-                        }
-                    })
-                    .await;
-            });
-        });
-        *self.worker.lock().unwrap() = Some(worker);
-        Ok(())
-    }
 
-    pub fn stop(&self) {
-        self.running.store(false, Ordering::SeqCst);
-    }
-}
+header nav { display: flex; gap: 18px; margin-left: 32px; }
+header nav a { color: #a5e4af; text-decoration: none; }
+header nav a:hover { text-decoration: underline; }
+.palette-node { cursor: grab; user-select: none; }
+.palette-node:active { cursor: grabbing; }
+.node-selected .node-body { stroke: #e1f7a7; stroke-width: 3; }
+#delete-node { margin: 10px 0; border-color: #a04c55; background: #3b222c; color: #ffb9bd; }
+button:disabled { opacity: .5; cursor: not-allowed; }
+.plugin-page { display: flex; align-items: start; gap: 40px; padding: 32px; }
+.plugin-page > section { max-width: 520px; flex: 1; }
+.installed-plugin { border: 1px solid #34485b; padding: 16px; border-radius: 10px; margin-bottom: 12px; }
+.installed-plugin p { color: #aab8c8; overflow-wrap: anywhere; }
+@media (max-width: 700px) { .plugin-page { flex-direction: column; } header nav { margin-left: 0; } }
 
-fn push_log(logs: &Arc<Mutex<Vec<String>>>, message: String) {
-    let mut lines = logs.lock().unwrap();
-    lines.push(message);
-    if lines.len() > 100 {
-        lines.remove(0);
-    }
-}
+/* Plugin-defined settings for the selected node. */
+#node-properties { margin: 18px 0; padding: 12px; border: 1px solid #34485b; border-radius: 8px; }
+#node-properties[hidden] { display: none; }
+#node-properties label { display: block; margin-top: 10px; color: #bdcbd7; text-transform: capitalize; font-size: 13px; }
+#node-properties input { display: block; width: 100%; margin-top: 5px; padding: 8px; background: #172534; color: white; border: 1px solid #466071; border-radius: 6px; }
